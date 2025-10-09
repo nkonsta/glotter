@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Glotter is a Next.js-based translation management system built to replace OneSky functionality. It provides a web interface for managing multi-language translations with inline editing, real-time updates, and a Supabase backend.
+Glotter is a Next.js-based translation management system built to replace OneSky functionality. It provides a web interface for managing multi-language translations with inline editing, real-time updates, and a Supabase backend. The UI features a modern 2025 SaaS aesthetic with clean design, minimal borders, and refined interactions inspired by Linear, Vercel, and Notion.
 
 ## Development Commands
 
@@ -111,24 +111,74 @@ See README.md lines 116-159 for full schema SQL.
 ### Implemented Features
 
 ✅ Translation grid with inline editing
-✅ Project selection dropdown
+✅ Modern custom project selector dropdown (button + menu pattern)
 ✅ Search functionality (searches both keys and values)
 ✅ Filter modes (all/missing/complete translations)
-✅ Pagination with configurable page size
+✅ Pagination with custom page size selector
 ✅ Real-time database updates via Supabase
-✅ Missing translation indicators (red highlight)
+✅ Missing translation indicators (amber badges)
 ✅ Type-safe database queries
+✅ Row selection with checkboxes
+✅ Bulk actions toolbar (export, delete)
+✅ Column visibility controls
+✅ Export functionality (individual languages or all languages as JSON)
+✅ Modern SaaS UI with minimal borders and refined interactions
+✅ Sticky table header and first column (checkbox + key)
+✅ Hover actions (edit/copy icons appear on row hover)
 
 ### Not Yet Implemented
 
 The following features are mentioned in the PRD but not yet built:
 
 - **Add New Translation Key** - Button exists but not functional (needs AI translation integration with OpenAI)
-- **Export Functionality** - No JSON export or ZIP download for languages
 - **Data Import** - No UI for importing existing translation data
 - **Authentication** - No user login or project permissions (relies on Supabase RLS if configured)
+- **Bulk Delete API Integration** - Bulk delete updates local state but doesn't call Supabase API yet (marked with TODO)
 
 When implementing new features, prioritize completing these MVP features before adding new functionality.
+
+## Design System & UI Patterns
+
+### Modern SaaS Aesthetic (2025)
+The UI follows a clean, minimal design inspired by Linear, Vercel, and Notion:
+- **No heavy gridlines** - use subtle dividers (`divide-y divide-gray-100`)
+- **Minimal borders** - `border-gray-200` with `hover:border-gray-300`
+- **Generous whitespace** - `py-3 px-4` cell padding, `h-14` row height
+- **Refined typography** - `tracking-tight` for headings, `text-gray-700` for content
+- **Smooth transitions** - `transition-all duration-150 ease-out`
+- **Hover elevation** - `hover:bg-gray-50 hover:shadow-sm` for interactive rows
+- **Custom dropdowns** - All selects use button + menu pattern (no native `<select>`)
+- **Amber badges** - Missing translations use `bg-amber-50 text-amber-600`
+
+### Custom Dropdown Pattern
+All dropdowns follow this pattern (project selector, page size, columns, export):
+```tsx
+<button onClick={() => setShowMenu(!showMenu)}>
+  <span>Selected Value</span>
+  <ChevronIcon />
+</button>
+
+{showMenu && (
+  <>
+    <div className="fixed inset-0 z-30" onClick={() => setShowMenu(false)} />
+    <div className="absolute ... bg-white rounded-lg shadow-lg border z-40">
+      {options.map(option => (
+        <button className={option.selected ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'}>
+          {option.label}
+        </button>
+      ))}
+    </div>
+  </>
+)}
+```
+
+### Color Tokens (app/globals.css)
+- `--color-primary: #2b6cb0` (primary actions, focus rings)
+- `--color-success: #10b981` (complete filter)
+- `--color-warning: #f59e0b` (missing badges)
+- `--color-danger: #ef4444` (delete actions)
+- `--color-surface: #f8fafc` (page background)
+- `--color-muted: #64748b` (secondary text)
 
 ## Common Development Patterns
 
@@ -142,9 +192,10 @@ When implementing new features, prioritize completing these MVP features before 
 ### Creating New UI Components
 
 - Use TypeScript with explicit prop types
-- Follow existing Tailwind CSS styling patterns (gradient backgrounds, rounded corners, shadow effects)
+- Follow the modern SaaS aesthetic (see Design System above)
 - Use 'use client' directive for interactive components
 - Implement loading and error states
+- Use custom dropdowns instead of native `<select>` elements
 
 ### Modifying the Translation Grid
 
