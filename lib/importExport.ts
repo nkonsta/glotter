@@ -43,6 +43,19 @@ export function normalizeLeafValue(value: unknown): string | null {
   return String(value);
 }
 
+// Decode \uXXXX escape sequences to real characters (idempotent on already-decoded strings)
+export function decodeUnicodeEscapes(input: string): string {
+  // Quick return if nothing to decode
+  if (!/\\u[0-9a-fA-F]{4}/.test(input)) return input;
+  return input.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) => {
+    try {
+      return String.fromCharCode(parseInt(hex, 16));
+    } catch {
+      return _ as unknown as string;
+    }
+  });
+}
+
 export function chunkArray<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));

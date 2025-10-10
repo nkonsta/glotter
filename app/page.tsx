@@ -17,7 +17,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/Dialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { DropdownMenuCheckboxItem } from '@/components/ui/DropdownMenu';
-import { ImportMode, toKeyToValueMap } from '@/lib/importExport';
+import { ImportMode, toKeyToValueMap, setNested, decodeUnicodeEscapes } from '@/lib/importExport';
 import { cn } from '@/lib/cn';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -84,6 +84,12 @@ export default function Home() {
   const [importFileName, setImportFileName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [clearBeforeImport, setClearBeforeImport] = useState(false);
+
+  // Export dialog state
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportSelected, setExportSelected] = useState<Set<string>>(new Set());
+  const [exportFallbackLang, setExportFallbackLang] = useState<string>('en');
+  const [fallbackMissingCount, setFallbackMissingCount] = useState<number>(0);
 
   const sortedLanguages = useMemo(() => {
     return [...languages].sort((a, b) => {
@@ -203,16 +209,28 @@ export default function Home() {
     }
   }
 
-  function exportLanguage(langCode: string) {
-    const languageTranslations = translations.reduce((acc, row) => {
-      const translation = row.translations[langCode];
-      if (translation?.value) {
-        acc[row.key] = translation.value;
-      }
-      return acc;
-    }, {} as Record<string, string>);
+  function exportLanguage(langCode: string, fallbackLang: string) {
+    // Build flat maps for target and fallback
+    const fallbackMap: Record<string, string | null> = {};
+    const targetMap: Record<string, string | null> = {};
+    translations.forEach(row => {
+      fallbackMap[row.key] = row.translations[fallbackLang]?.value ?? null;
+      targetMap[row.key] = row.translations[langCode]?.value ?? null;
+    });
 
-    const blob = new Blob([JSON.stringify(languageTranslations, null, 2)], { type: 'application/json' });
+    // Reconstruct nested with fallback
+    const nested: Record<string, unknown> = {};
+    Object.keys(targetMap).forEach(k => {
+      const val = targetMap[k] ?? fallbackMap[k];
+      if (val != null) setNested(nested as any, k, val);
+    });
+
+    // ASCII-only
+    const json = JSON.stringify(nested, null, 2).replace(/[\u0080-\uFFFF]/g, (ch) => {
+      const code = ch.charCodeAt(0).toString(16).padStart(4, '0');
+      return `\\u${code}`;
+    });
+    const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -223,28 +241,44 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
-  function exportAllLanguages() {
-    const allExports: Record<string, Record<string, string>> = {};
+  // removed all-languages JSON export per user request
 
-    languages.forEach(lang => {
-      allExports[lang.code] = translations.reduce((acc, row) => {
-        const translation = row.translations[lang.code];
-        if (translation?.value) {
-          acc[row.key] = translation.value;
-        }
-        return acc;
-      }, {} as Record<string, string>);
-    });
+  async function exportAllLanguagesZip(selectedCodes: string[], fallbackLang: string) {
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
 
-    const blob = new Blob([JSON.stringify(allExports, null, 2)], { type: 'application/json' });
+      // Precompute fallback map
+      const fbMap: Record<string, string | null> = {};
+      translations.forEach(row => { fbMap[row.key] = row.translations[fallbackLang]?.value ?? null; });
+
+      for (const code of selectedCodes) {
+        const nested: Record<string, unknown> = {};
+        translations.forEach(row => {
+          const val = row.translations[code]?.value ?? fbMap[row.key];
+          if (val != null) setNested(nested as any, row.key, val);
+        });
+        // ASCII-only export: escape non-ASCII to \uXXXX
+        const json = JSON.stringify(nested, null, 2).replace(/[\u0080-\uFFFF]/g, (ch) => {
+          const code = ch.charCodeAt(0).toString(16).padStart(4, '0');
+          return `\\u${code}`;
+        });
+        zip.file(`${code}.json`, json);
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `all-languages-${Date.now()}.json`;
+      a.download = `translations-${Date.now()}.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      toast({ title: 'Export failed', description: 'Failed to create ZIP export.', variant: 'error' });
+    }
   }
 
   function openAllLanguagesPanel(rowIndex: number) {
@@ -439,31 +473,23 @@ export default function Home() {
                     <Upload className="h-4 w-4" />
                     Import
                   </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="md" className="gap-2">
-                        <Download className="h-4 w-4" />
+                  <Button
+                    variant="outline"
+                    size="md"
+                    className="gap-2"
+                    onClick={() => {
+                      // Open Export Languages dialog directly
+                      setExportSelected(new Set(languages.map(l => l.code))); // preselect all
+                      const defaultFallback = languages.find(l => l.code.toLowerCase() === 'en')?.code || languages[0]?.code || '';
+                      setExportFallbackLang(defaultFallback);
+                      const missing = translations.reduce((acc, row) => acc + ((row.translations[defaultFallback]?.value ?? null) == null ? 1 : 0), 0);
+                      setFallbackMissingCount(missing);
+                      setIsExportOpen(true);
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
                         Export
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-64" align="end">
-                      <DropdownMenuLabel>Export Translations</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => exportAllLanguages()} className="gap-2">
-                        <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-                        </svg>
-                        All Languages (JSON)
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuLabel>Individual Languages</DropdownMenuLabel>
-                      {sortedLanguages.map(lang => (
-                        <DropdownMenuItem key={lang.code} onClick={() => exportLanguage(lang.code)}>
-                          <span className="font-medium">{lang.code.toUpperCase()}</span>
-                          {lang.name && <span className="text-xs text-muted ml-2">({lang.name})</span>}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                   <Dialog open={isAddKeyOpen} onOpenChange={setIsAddKeyOpen}>
                     <DialogTrigger asChild>
                       <Button>+ Add New Key</Button>
@@ -976,6 +1002,111 @@ export default function Home() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Export Languages Dialog */}
+      <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export languages</DialogTitle>
+            <DialogDescription>Select languages and an optional fallback language.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Fallback language</label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between">
+                    <span className="truncate">
+                      {exportFallbackLang.toUpperCase()} {sortedLanguages.find(l => l.code === exportFallbackLang)?.name ? `(${sortedLanguages.find(l => l.code === exportFallbackLang)?.name})` : ''}
+                    </span>
+                    <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-64 overflow-auto w-64">
+                  {sortedLanguages.map(l => (
+                    <DropdownMenuItem key={l.code} onClick={() => {
+                      setExportFallbackLang(l.code);
+                      const missing = translations.reduce((acc, row) => acc + ((row.translations[l.code]?.value ?? null) == null ? 1 : 0), 0);
+                      setFallbackMissingCount(missing);
+                    }}>
+                      <span className="font-medium">{l.code.toUpperCase()}</span>
+                      {l.name && <span className="text-xs text-muted ml-2">({l.name})</span>}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {fallbackMissingCount > 0 && (
+                <p className="mt-1 text-xs text-warning">Warning: {fallbackMissingCount} keys are missing values in the selected fallback language.</p>
+              )}
+    </div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted">Select languages</div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setExportSelected(new Set(languages.map(l => l.code)))}
+                >
+                  Select all
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setExportSelected(new Set())}
+                >
+                  Select none
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 max-h-80 overflow-auto border border-border rounded-md p-2">
+              {sortedLanguages.map(l => {
+                const checked = exportSelected.has(l.code);
+                return (
+                  <label key={l.code} className="inline-flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = new Set(exportSelected);
+                        if (e.target.checked) next.add(l.code); else next.delete(l.code);
+                        setExportSelected(next);
+                      }}
+                    />
+                    <span className="font-medium">{l.code.toUpperCase()}</span>
+                    {l.name && <span className="text-xs text-muted">({l.name})</span>}
+                  </label>
+                );
+              })}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>
+              <Button
+                onClick={async () => {
+                  const selected = Array.from(exportSelected);
+                  if (selected.length === 0) return;
+                  if (selected.length === 1) {
+                    exportLanguage(selected[0], exportFallbackLang);
+                  } else {
+                    // zip only selected languages
+                    try {
+                      await exportAllLanguagesZip(selected, exportFallbackLang);
+                    } catch (e) {
+                      console.error(e);
+                      toast({ title: 'Export failed', description: 'Failed to create ZIP export.', variant: 'error' });
+                    }
+                  }
+                  setIsExportOpen(false);
+                }}
+                disabled={exportSelected.size === 0}
+              >
+                Export
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Import JSON Dialog */}
       <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
         <DialogContent>
@@ -1048,12 +1179,17 @@ export default function Home() {
                       // Support {key:value} (language-specific) and {key:{lang:value}} / [{key,lang,value}] later
                       let map: Record<string, string | null> = {};
                       if (json && typeof json === 'object' && !Array.isArray(json)) {
-                        map = toKeyToValueMap(json as Record<string, unknown>);
+                        // Decode any \uXXXX in string leaves
+                        const decodedObj: Record<string, unknown> = {};
+                        Object.entries(json as Record<string, unknown>).forEach(([k, v]) => {
+                          decodedObj[k] = typeof v === 'string' ? decodeUnicodeEscapes(v) : v;
+                        });
+                        map = toKeyToValueMap(decodedObj);
                       } else if (Array.isArray(json)) {
                         const tmp: Record<string, unknown> = {};
                         for (const rec of json as Array<any>) {
                           if (rec && typeof rec.key === 'string' && (rec.lang == null || String(rec.lang).toLowerCase() === importTargetLang)) {
-                            tmp[rec.key] = rec.value;
+                            tmp[rec.key] = typeof rec.value === 'string' ? decodeUnicodeEscapes(rec.value) : rec.value;
                           }
                         }
                         map = toKeyToValueMap(tmp);
