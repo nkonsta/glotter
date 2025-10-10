@@ -234,9 +234,6 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                           <svg className="w-4 h-4 text-muted hover:text-foreground transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                           </svg>
-                          <svg className="w-4 h-4 text-muted hover:text-foreground transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
                         </div>
                       </div>
                     )}
@@ -454,11 +451,13 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                             </div>
                             <div className="opacity-0 group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
                               <button
-                                className="text-xs text-muted hover:text-foreground"
+                                className="text-muted hover:text-foreground transition-colors"
                                 onClick={() => openRename(actualRowIndex)}
                                 aria-label="Rename key"
                               >
-                                Rename
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
                               </button>
                             </div>
                           </div>
