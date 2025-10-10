@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import TranslationGrid from '@/components/TranslationGrid';
@@ -19,6 +19,7 @@ import { DropdownMenuCheckboxItem } from '@/components/ui/DropdownMenu';
 import { cn } from '@/lib/cn';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { SidePanel } from '@/components/ui/SidePanel';
 import { Spinner } from '@/components/ui/Spinner';
 
 interface Project {
@@ -48,6 +49,20 @@ export default function Home() {
   const [creatingKey, setCreatingKey] = useState(false);
   const [liveMessage, setLiveMessage] = useState('');
   const [visibleLanguages, setVisibleLanguages] = useState<Set<string>>(new Set());
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelKeyIndex, setPanelKeyIndex] = useState<number | null>(null);
+  const [columnsSearch, setColumnsSearch] = useState('');
+  const VISIBLE_KEY_PREFIX = 'glotter-visible-langs-';
+
+  const sortedLanguages = useMemo(() => {
+    return [...languages].sort((a, b) => {
+      const aEn = a.code.toLowerCase() === 'en';
+      const bEn = b.code.toLowerCase() === 'en';
+      if (aEn && !bEn) return -1;
+      if (!aEn && bEn) return 1;
+      return a.code.localeCompare(b.code);
+    });
+  }, [languages]);
 
   useEffect(() => {
     loadProjects();
@@ -92,9 +107,38 @@ export default function Home() {
   }, [applyFilters]);
 
   useEffect(() => {
-    // Initialize all languages as visible when languages change
-    setVisibleLanguages(new Set(languages.map(l => l.code)));
-  }, [languages]);
+    // Initialize visible languages from localStorage (per-project), or default to 3 (EN first)
+    if (!selectedProject) return;
+    try {
+      const saved = typeof window !== 'undefined'
+        ? window.localStorage.getItem(VISIBLE_KEY_PREFIX + selectedProject)
+        : null;
+      let codes: string[] | null = null;
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[];
+        if (Array.isArray(parsed)) codes = parsed;
+      }
+      const availableCodes = new Set(sortedLanguages.map(l => l.code));
+      const initial = codes && codes.length > 0
+        ? new Set(codes.filter(c => availableCodes.has(c)))
+        : new Set(sortedLanguages.slice(0, 3).map(l => l.code));
+      setVisibleLanguages(initial);
+    } catch {
+      setVisibleLanguages(new Set(sortedLanguages.slice(0, 3).map(l => l.code)));
+    }
+  }, [sortedLanguages, languages, selectedProject]);
+
+  function persistVisibleLanguages(next: Set<string>) {
+    if (!selectedProject) return;
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          VISIBLE_KEY_PREFIX + selectedProject,
+          JSON.stringify(Array.from(next))
+        );
+      }
+    } catch {}
+  }
 
   // duplicate applyFilters removed (now defined via useCallback above)
 
@@ -170,6 +214,11 @@ export default function Home() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  function openAllLanguagesPanel(rowIndex: number) {
+    setPanelKeyIndex(rowIndex);
+    setPanelOpen(true);
   }
 
   if (error) {
@@ -325,7 +374,7 @@ export default function Home() {
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuLabel>Individual Languages</DropdownMenuLabel>
-                      {languages.map(lang => (
+                      {sortedLanguages.map(lang => (
                         <DropdownMenuItem key={lang.code} onClick={() => exportLanguage(lang.code)}>
                           <span className="font-medium">{lang.code.toUpperCase()}</span>
                           {lang.name && <span className="text-xs text-muted ml-2">({lang.name})</span>}
@@ -417,7 +466,7 @@ export default function Home() {
                     ]}
                   />
 
-                  {languages.length > 0 && (
+                  {sortedLanguages.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="ml-2 gap-2">
@@ -427,28 +476,72 @@ export default function Home() {
                       Columns
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>Show/Hide Languages</DropdownMenuLabel>
-                    {languages.map(lang => (
-                      <DropdownMenuCheckboxItem
-                        key={lang.code}
-                        checked={visibleLanguages.has(lang.code)}
-                        onCheckedChange={(checked) => {
-                          const newVisible = new Set(visibleLanguages);
-                          if (!checked) {
-                            newVisible.delete(lang.code);
-                          } else {
-                            newVisible.add(lang.code);
-                          }
-                          setVisibleLanguages(newVisible);
+                  <DropdownMenuContent align="end" className="w-72">
+                    <DropdownMenuLabel className="text-muted-foreground">Languages</DropdownMenuLabel>
+                    <div className="px-2 py-1.5">
+                      <input
+                        value={columnsSearch}
+                        onChange={(e) => setColumnsSearch(e.target.value)}
+                        placeholder="Search languages..."
+                        className="w-full px-2 py-1 border border-border rounded bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <DropdownMenuSeparator />
+                    <div className="px-2 pb-1 grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const all = new Set(languages.map(l => l.code));
+                          setVisibleLanguages(all);
+                          persistVisibleLanguages(all);
                         }}
                       >
-                        <span className="text-sm font-medium">{lang.code.toUpperCase()}</span>
-                        {lang.name && (
-                          <span className="text-xs text-muted ml-2">{lang.name}</span>
-                        )}
-                      </DropdownMenuCheckboxItem>
-                    ))}
+                        Select all
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const none = new Set<string>();
+                          setVisibleLanguages(none);
+                          persistVisibleLanguages(none);
+                        }}
+                      >
+                        Select none
+                      </Button>
+                      
+                    </div>
+                    <DropdownMenuSeparator />
+                    {sortedLanguages
+                      .filter(lang => {
+                        const q = columnsSearch.trim().toLowerCase();
+                        if (!q) return true;
+                        const code = lang.code.toLowerCase();
+                        const name = (lang.name || '').toLowerCase();
+                        return code.includes(q) || name.includes(q);
+                      })
+                      .map(lang => (
+                        <DropdownMenuCheckboxItem
+                          key={lang.code}
+                          checked={visibleLanguages.has(lang.code)}
+                          onCheckedChange={(checked) => {
+                            const newVisible = new Set(visibleLanguages);
+                            if (!checked) {
+                              newVisible.delete(lang.code);
+                            } else {
+                              newVisible.add(lang.code);
+                            }
+                            setVisibleLanguages(newVisible);
+                            persistVisibleLanguages(newVisible);
+                          }}
+                        >
+                          <span className="text-sm font-medium">{lang.code.toUpperCase()}</span>
+                          {lang.name && (
+                            <span className="text-xs text-muted ml-2">{lang.name}</span>
+                          )}
+                        </DropdownMenuCheckboxItem>
+                      ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
                   )}
@@ -458,8 +551,41 @@ export default function Home() {
 
             <TranslationGrid
               data={filteredTranslations}
-              languages={languages.filter(l => visibleLanguages.has(l.code))}
+              languages={sortedLanguages.filter(l => visibleLanguages.has(l.code))}
+            onOpenAllLanguages={openAllLanguagesPanel}
             />
+
+          <SidePanel
+            open={panelOpen}
+            onOpenChange={setPanelOpen}
+            title={panelKeyIndex != null ? filteredTranslations[panelKeyIndex]?.key : 'All Languages'}
+            description={panelKeyIndex != null ? 'Edit values for all languages' : undefined}
+          >
+            {panelKeyIndex != null && (
+              <div className="space-y-3">
+                {sortedLanguages.map((lang) => {
+                  const row = filteredTranslations[panelKeyIndex!];
+                  const current = row?.translations[lang.code]?.value || '';
+                  return (
+                    <div key={lang.code}>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">
+                        {lang.code.toUpperCase()} {lang.name ? `(${lang.name})` : ''}
+                      </label>
+                      <textarea
+                        defaultValue={current}
+                        className="w-full p-2 text-sm border border-border rounded-md bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                        rows={3}
+                      />
+                    </div>
+                  );
+                })}
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setPanelOpen(false)}>Close</Button>
+                  <Button onClick={() => setPanelOpen(false)}>Save</Button>
+                </div>
+              </div>
+            )}
+          </SidePanel>
           </div>
         )}
       </main>

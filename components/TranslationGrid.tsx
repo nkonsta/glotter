@@ -10,13 +10,16 @@ import {
 } from '@tanstack/react-table';
 import { TranslationRow } from '@/lib/supabase';
 import { updateTranslation, createTranslation } from '@/lib/translations';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/Tooltip';
+import { Languages } from 'lucide-react';
 
 interface TranslationGridProps {
   data: TranslationRow[];
   languages: Array<{ code: string; name: string | null }>;
+  onOpenAllLanguages?: (rowIndex: number) => void;
 }
 
-export default function TranslationGrid({ data, languages }: TranslationGridProps) {
+export default function TranslationGrid({ data, languages, onOpenAllLanguages }: TranslationGridProps) {
   const [tableData, setTableData] = useState(data);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -136,11 +139,33 @@ export default function TranslationGrid({ data, languages }: TranslationGridProp
     // Key column
     columnHelper.accessor('key', {
       header: 'Key',
-      cell: info => (
-        <div className="font-medium text-foreground tracking-tight text-sm min-w-[180px] max-w-[220px] break-words">
-          {info.getValue()}
-        </div>
-      ),
+      cell: info => {
+        const displayRowIndex = info.row.index;
+        const actualRowIndex = startIndex + displayRowIndex;
+        return (
+          <div className="group/ky flex items-center justify-between gap-2 min-w-[180px] max-w-[240px]">
+            <div className="font-medium text-foreground tracking-tight text-sm break-words">
+              {info.getValue()}
+            </div>
+            {onOpenAllLanguages && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => onOpenAllLanguages(actualRowIndex)}
+                      className="opacity-0 group-hover/ky:opacity-100 transition-opacity text-muted hover:text-foreground"
+                      aria-label="Edit all languages for this key"
+                    >
+                      <Languages className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit all languages</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        );
+      },
     }),
     ...languages.map(lang =>
       columnHelper.accessor(
