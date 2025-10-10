@@ -281,6 +281,15 @@ export default function Home() {
     }
   }
 
+  function resetImportFileState() {
+    setImportFileName('');
+    setImportPreview(null);
+    setImportPayload(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+
   function openAllLanguagesPanel(rowIndex: number) {
     setPanelKeyIndex(rowIndex);
     setPanelOpen(true);
@@ -461,12 +470,11 @@ export default function Home() {
                     size="md"
                     className="gap-2"
                     onClick={() => {
+                      resetImportFileState();
                       setImportTargetLang(sortedLanguages[0]?.code || 'en');
                       setImportMode('merge');
                       setDeleteMissing(false);
                       setClearBeforeImport(false);
-                      setImportPreview(null);
-                      setImportPayload(null);
                       setIsImportOpen(true);
                     }}
                   >
@@ -756,11 +764,10 @@ export default function Home() {
                     toast({ title: 'Project created', description: `Project ${project.name} created`, variant: 'success' });
                     // Offer import for the first language
                     const primaryLang = (langs[0]?.code || 'en').toLowerCase();
+                    resetImportFileState();
                     setImportTargetLang(primaryLang);
                     setImportMode('merge');
                     setDeleteMissing(false);
-                    setImportPreview(null);
-                    setImportPayload(null);
                     setIsImportOpen(true);
                   } catch (e) {
                     console.error(e);
@@ -827,11 +834,10 @@ export default function Home() {
                     setNewLangName('');
                     toast({ title: 'Language added', description: `Added ${code.toUpperCase()}`, variant: 'success' });
                     // Prompt to import for the new language
+                    resetImportFileState();
                     setImportTargetLang(code.toLowerCase());
                     setImportMode('merge');
                     setDeleteMissing(false);
-                    setImportPreview(null);
-                    setImportPayload(null);
                     setIsImportOpen(true);
                   } catch (e) {
                     console.error(e);
@@ -1108,7 +1114,14 @@ export default function Home() {
         </DialogContent>
       </Dialog>
       {/* Import JSON Dialog */}
-      <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+      <Dialog
+        open={isImportOpen}
+        onOpenChange={(open) => {
+          setIsImportOpen(open);
+          // Always reset file-related transient state so reopening shows a clean slate
+          resetImportFileState();
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Import JSON</DialogTitle>
@@ -1237,7 +1250,16 @@ export default function Home() {
             )}
 
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="outline" onClick={() => setIsImportOpen(false)} disabled={importBusy}>Cancel</Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  resetImportFileState();
+                  setIsImportOpen(false);
+                }}
+                disabled={importBusy}
+              >
+                Cancel
+              </Button>
               <Button
                 onClick={async () => {
                   if (!selectedProject || !importPayload) return;
