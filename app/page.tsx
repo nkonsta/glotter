@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import TranslationGrid from '@/components/TranslationGrid';
@@ -121,10 +122,10 @@ export default function Home() {
       const availableCodes = new Set(sortedLanguages.map(l => l.code));
       const initial = codes && codes.length > 0
         ? new Set(codes.filter(c => availableCodes.has(c)))
-        : new Set(sortedLanguages.slice(0, 3).map(l => l.code));
+        : new Set(sortedLanguages.slice(0, 2).map(l => l.code));
       setVisibleLanguages(initial);
     } catch {
-      setVisibleLanguages(new Set(sortedLanguages.slice(0, 3).map(l => l.code)));
+      setVisibleLanguages(new Set(sortedLanguages.slice(0, 2).map(l => l.code)));
     }
   }, [sortedLanguages, languages, selectedProject]);
 
@@ -244,7 +245,10 @@ export default function Home() {
       <header className="bg-surface-elevated/95 backdrop-blur border-b border-border/60 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold tracking-tight">Glotter</h1>
+            <div className="flex items-center gap-2">
+              <Image src="/icon.svg" alt="Glotter" width={28} height={28} className="h-7 w-7" priority />
+              <h1 className="text-lg font-semibold tracking-tight">Glotter</h1>
+            </div>
             {projects.length > 0 && (
               <>
                 <div className="w-px h-4 bg-border"></div>

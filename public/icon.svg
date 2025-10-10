@@ -1,0 +1,10 @@
+<svg width="218" height="218" viewBox="0 0 218 218" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Speech bubble body -->
+  <path d="M30 45C30 36.7157 36.7157 30 45 30H173C181.284 30 188 36.7157 188 45V135C188 143.284 181.284 150 173 150H90L60 180V150H45C36.7157 150 30 143.284 30 135V45Z" fill="#3C4B5C"/>
+  
+  <!-- Text lines inside bubble -->
+  <rect x="55" y="60" width="108" height="14" rx="7" fill="white"/>
+  <rect x="55" y="90" width="108" height="14" rx="7" fill="white"/>
+  <rect x="55" y="120" width="72" height="14" rx="7" fill="white"/>
+</svg>
+
