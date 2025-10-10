@@ -333,3 +333,9 @@ What's next:
 - Import/AI translation/auth enhancements
 
 Last updated: 2025-10-10
+
+---
+
+## 📝 Changelog
+
+- 2025-10-10: Fixed caret jumping to the start when typing/backspace in grid editor. The editor now uses a localized cell state and stable column renderers; Enter-to-save and blur-to-save are unchanged.

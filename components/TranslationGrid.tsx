@@ -27,7 +27,6 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
   const { toast } = useToast();
   const [tableData, setTableData] = useState(data);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
-  const [editValue, setEditValue] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -74,22 +73,20 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
   };
 
   const handleCellClick = useCallback((actualRowIndex: number, langCode: string) => {
-    const currentValue = tableData[actualRowIndex].translations[langCode]?.value || '';
-    setEditValue(currentValue);
     setEditingCell({ row: actualRowIndex, col: langCode });
-  }, [tableData]);
+  }, []);
 
-  const handleSave = useCallback(async (actualRowIndex: number, langCode: string) => {
+  const handleSave = useCallback(async (actualRowIndex: number, langCode: string, newValue: string) => {
     const row = tableData[actualRowIndex];
     const translation = row.translations[langCode];
 
     try {
       if (translation.translation_id) {
         // Update existing translation
-        await updateTranslation(translation.translation_id, editValue);
+        await updateTranslation(translation.translation_id, newValue);
       } else {
         // Create new translation
-        await createTranslation(row.key_id, translation.language_id, editValue);
+        await createTranslation(row.key_id, translation.language_id, newValue);
       }
 
       // Update local state
@@ -100,7 +97,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
           ...row.translations,
           [langCode]: {
             ...translation,
-            value: editValue
+            value: newValue
           }
         }
       };
@@ -110,12 +107,12 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
       console.error('Failed to save translation:', error);
       toast({ title: 'Save failed', description: 'Failed to save translation. Please try again.', variant: 'error' });
     }
-  }, [editValue, tableData]);
+  }, [tableData]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent, rowIndex: number, langCode: string) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent, rowIndex: number, langCode: string, currentValue: string) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSave(rowIndex, langCode);
+      handleSave(rowIndex, langCode, currentValue);
     } else if (e.key === 'Escape') {
       setEditingCell(null);
     }
@@ -203,14 +200,12 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
             return (
               <div className="min-w-[250px] max-w-[400px]">
                 {isEditing ? (
-                  <textarea
-                    autoFocus
-                    value={editValue}
-                    onChange={e => setEditValue(e.target.value)}
-                    onBlur={() => handleSave(actualRowIndex, langCode)}
-                    onKeyDown={e => handleKeyDown(e, actualRowIndex, langCode)}
-                    className="w-full p-2 text-sm border-2 border-primary rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary resize-none"
-                    rows={3}
+                  <CellEditor
+                    key={`${actualRowIndex}-${langCode}`}
+                    initialValue={value || ''}
+                    onCancel={() => setEditingCell(null)}
+                    onCommit={(v) => handleSave(actualRowIndex, langCode, v)}
+                    onKeyDown={(e, v) => handleKeyDown(e, actualRowIndex, langCode, v)}
                   />
                 ) : (
                   <div
@@ -256,7 +251,6 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     tableData,
     toggleAllRows,
     toggleRowSelection,
-    editValue,
     editingCell?.row,
     editingCell?.col,
     columnHelper,
@@ -267,6 +261,21 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
+
+  function CellEditor({ initialValue, onCommit, onCancel, onKeyDown }: { initialValue: string; onCommit: (v: string) => void; onCancel: () => void; onKeyDown: (e: React.KeyboardEvent, v: string) => void }) {
+    const [localValue, setLocalValue] = useState(initialValue);
+    return (
+      <textarea
+        autoFocus
+        value={localValue}
+        onChange={e => setLocalValue(e.target.value)}
+        onBlur={() => onCommit(localValue)}
+        onKeyDown={e => onKeyDown(e, localValue)}
+        className="w-full p-2 text-sm border-2 border-primary rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary resize-none"
+        rows={3}
+      />
+    );
+  }
 
   const goToPage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
