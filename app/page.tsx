@@ -246,7 +246,7 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <Image src="/icon.svg" alt="Glotter" width={28} height={28} className="h-7 w-7" priority />
+              <Image src="/chinese.svg" alt="Glotter" width={28} height={28} className="h-7 w-7" priority />
               <h1 className="text-lg font-semibold tracking-tight">Glotter</h1>
             </div>
             {projects.length > 0 && (
