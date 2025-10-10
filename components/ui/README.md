@@ -91,4 +91,37 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 - Menus, dialogs, and tooltips rely on Radix for proper roles and keyboard handling.
 - Announce success/error via an aria-live region (see `app/page.tsx`).
 
+### Toast
+Lightweight notification system with accessible announcements and dark-mode aware styling.
+
+Usage:
+
+```tsx
+// app/layout.tsx
+import { ToastProvider } from '@/components/ui/Toast';
+
+// Wrap application body content
+<ToastProvider>{children}</ToastProvider>
+```
+
+```tsx
+// Any client component
+import { useToast } from '@/components/ui/Toast';
+
+const { toast } = useToast();
+
+toast({
+  title: 'Saved',
+  description: 'Translation updated successfully',
+  variant: 'success', // 'success' | 'error' | 'info'
+  actionLabel: 'Undo',
+  onAction: () => {/* revert */},
+});
+```
+
+Notes:
+- Success/info toasts use `aria-live="polite"`; error toasts use `aria-live="assertive"`.
+- Auto-dismiss after ~4s; pause on hover; keyboard focusable actions and close.
+- Colors follow tokens: surface, border, foreground; variant bar uses success/danger/info.
+
 

@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SidePanel } from '@/components/ui/SidePanel';
 import { Spinner } from '@/components/ui/Spinner';
+import { useToast } from '@/components/ui/Toast';
 
 interface Project {
   id: string;
@@ -34,6 +35,7 @@ interface Language {
 }
 
 export default function Home() {
+  const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [languages, setLanguages] = useState<Language[]>([]);
@@ -226,7 +228,9 @@ export default function Home() {
     if (!keyIds || keyIds.length === 0) return;
     setTranslations(prev => prev.filter(r => !keyIds.includes(r.key_id)));
     setFilteredTranslations(prev => prev.filter(r => !keyIds.includes(r.key_id)));
-    setLiveMessage(`${keyIds.length} key${keyIds.length > 1 ? 's' : ''} deleted`);
+    const msg = `${keyIds.length} key${keyIds.length > 1 ? 's' : ''} deleted`;
+    setLiveMessage(msg);
+    toast({ title: 'Deleted', description: msg, variant: 'success' });
   }
 
   if (error) {
@@ -420,14 +424,18 @@ export default function Home() {
                               try {
                                 setCreatingKey(true);
                                 const { id } = await createTranslationKey(selectedProject, newKeyName.trim());
-                                setLiveMessage(`Created key ${newKeyName}`);
+                                const successMsg = `Created key ${newKeyName}`;
+                                setLiveMessage(successMsg);
+                                toast({ title: 'Key created', description: successMsg, variant: 'success' });
                                 setNewKeyName('');
                                 setIsAddKeyOpen(false);
                                 // Reload data to include new key
                                 await loadProjectData(selectedProject);
                               } catch (e) {
                                 console.error(e);
-                                setLiveMessage('Failed to create key');
+                                const msg = 'Failed to create key';
+                                setLiveMessage(msg);
+                                toast({ title: 'Error', description: msg, variant: 'error' });
                               } finally {
                                 setCreatingKey(false);
                               }

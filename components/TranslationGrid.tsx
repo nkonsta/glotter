@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/Button';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/Tooltip';
 import { Languages } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
 
 interface TranslationGridProps {
   data: TranslationRow[];
@@ -23,6 +24,7 @@ interface TranslationGridProps {
 }
 
 export default function TranslationGrid({ data, languages, onOpenAllLanguages, onDeletedKeys }: TranslationGridProps) {
+  const { toast } = useToast();
   const [tableData, setTableData] = useState(data);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -106,7 +108,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
       setEditingCell(null);
     } catch (error) {
       console.error('Failed to save translation:', error);
-      alert('Failed to save translation. Please try again.');
+      toast({ title: 'Save failed', description: 'Failed to save translation. Please try again.', variant: 'error' });
     }
   }, [editValue, tableData]);
 
@@ -292,7 +294,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     } catch (e) {
       console.error(e);
       setDeleteDialogOpen(false);
-      alert('Failed to delete selected keys');
+      toast({ title: 'Delete failed', description: 'Failed to delete selected keys', variant: 'error' });
     } finally {
       setSubmitting(false);
     }
@@ -323,9 +325,10 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
       next[renameDialog.rowIndex] = { ...row, key: newKey };
       setTableData(next);
       setRenameDialog({ open: false, rowIndex: null, value: '' });
+      toast({ title: 'Key renamed', description: 'The key name has been updated.', variant: 'success' });
     } catch (e) {
       console.error(e);
-      alert('Failed to rename key');
+      toast({ title: 'Rename failed', description: 'Failed to rename key', variant: 'error' });
     } finally {
       setSubmitting(false);
     }
