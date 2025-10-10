@@ -1,9 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getProjects, getProjectLanguages, getTranslationsGrid } from '@/lib/translations';
+import { useCallback, useEffect, useState } from 'react';
+import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import TranslationGrid from '@/components/TranslationGrid';
+import { Button } from '@/components/ui/Button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/DropdownMenu';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/Dialog';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { DropdownMenuCheckboxItem } from '@/components/ui/DropdownMenu';
+import { cn } from '@/lib/cn';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 interface Project {
   id: string;
@@ -25,9 +39,12 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'missing' | 'complete'>('all');
-  const [showColumnMenu, setShowColumnMenu] = useState(false);
-  const [showExportMenu, setShowExportMenu] = useState(false);
+  // Columns visibility handled via DropdownMenu
   const [showProjectMenu, setShowProjectMenu] = useState(false);
+  const [isAddKeyOpen, setIsAddKeyOpen] = useState(false);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [liveMessage, setLiveMessage] = useState('');
   const [visibleLanguages, setVisibleLanguages] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -40,16 +57,7 @@ export default function Home() {
     }
   }, [selectedProject]);
 
-  useEffect(() => {
-    applyFilters();
-  }, [translations, searchQuery, filterMode, languages]);
-
-  useEffect(() => {
-    // Initialize all languages as visible when languages change
-    setVisibleLanguages(new Set(languages.map(l => l.code)));
-  }, [languages]);
-
-  function applyFilters() {
+  const applyFilters = useCallback(() => {
     let filtered = translations;
 
     // Apply search filter
@@ -75,7 +83,18 @@ export default function Home() {
     }
 
     setFilteredTranslations(filtered);
-  }
+  }, [translations, searchQuery, filterMode]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
+
+  useEffect(() => {
+    // Initialize all languages as visible when languages change
+    setVisibleLanguages(new Set(languages.map(l => l.code)));
+  }, [languages]);
+
+  // duplicate applyFilters removed (now defined via useCallback above)
 
   async function loadProjects() {
     try {
@@ -153,14 +172,14 @@ export default function Home() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-lg shadow-md max-w-md">
-          <h2 className="text-xl font-bold text-red-600 mb-4">Error</h2>
-          <p className="text-gray-700 mb-4">{error}</p>
-          <p className="text-sm text-gray-500">
-            Make sure you've added your Supabase credentials to .env.local:
+      <div className="min-h-screen flex items-center justify-center bg-surface text-foreground">
+        <div className="bg-surface-elevated p-8 rounded-xl shadow-card border border-border max-w-md">
+          <h2 className="text-xl font-bold text-danger mb-4">Error</h2>
+          <p className="mb-4">{error}</p>
+          <p className="text-sm text-muted">
+            Make sure you’ve added your Supabase credentials to .env.local:
           </p>
-          <pre className="mt-2 p-3 bg-gray-100 rounded text-xs overflow-x-auto">
+          <pre className="mt-2 p-3 bg-surface-hover rounded text-xs overflow-x-auto">
             NEXT_PUBLIC_SUPABASE_URL=your-url{'\n'}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=your-key
           </pre>
@@ -170,134 +189,114 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="bg-surface-elevated/95 backdrop-blur border-b border-border/60 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold text-gray-900 tracking-tight">Glotter</h1>
-            {projects.length > 0 && selectedProject && (
+            <h1 className="text-lg font-semibold tracking-tight">Glotter</h1>
+            {projects.length > 0 && (
               <>
-                <div className="w-px h-4 bg-gray-300"></div>
-                <div className="relative">
-                  <button
-                    onClick={() => setShowProjectMenu(!showProjectMenu)}
-                    className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 bg-transparent hover:bg-gray-50 rounded-md focus:outline-none focus:bg-gray-50 transition-colors text-sm font-medium text-gray-700"
-                  >
-                    <span>{projects.find(p => p.id === selectedProject)?.name}</span>
-                    <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {showProjectMenu && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-30"
-                        onClick={() => setShowProjectMenu(false)}
-                      />
-                      <div className="absolute left-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-40">
-                        {projects.map((project) => (
-                          <button
-                            key={project.id}
-                            onClick={() => {
-                              setSelectedProject(project.id);
-                              setShowProjectMenu(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-                              project.id === selectedProject
-                                ? 'bg-blue-50 text-blue-700 font-medium'
-                                : 'text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            {project.name}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
+                <div className="w-px h-4 bg-border"></div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="pl-2 pr-1.5 py-1 gap-1.5">
+                      <span>
+                        {selectedProject
+                          ? projects.find(p => p.id === selectedProject)?.name
+                          : "Select a project..."}
+                      </span>
+                      <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56">
+                    {projects.map((project) => (
+                      <DropdownMenuItem
+                        key={project.id}
+                        onClick={() => setSelectedProject(project.id)}
+                        className={cn(
+                          project.id === selectedProject
+                            ? "bg-primary-soft text-foreground font-medium"
+                            : "",
+                          "data-[highlighted]:bg-surface-hover"
+                        )}
+                      >
+                        {project.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </>
             )}
           </div>
-          {projects.length > 0 && !selectedProject && (
-            <div className="relative">
-              <button
-                onClick={() => setShowProjectMenu(!showProjectMenu)}
-                className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg bg-white hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium text-gray-500"
-              >
-                <span>Select a project...</span>
-                <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-
-              {showProjectMenu && (
-                <>
-                  <div
-                    className="fixed inset-0 z-30"
-                    onClick={() => setShowProjectMenu(false)}
-                  />
-                  <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-40">
-                    {projects.map((project) => (
-                      <button
-                        key={project.id}
-                        onClick={() => {
-                          setSelectedProject(project.id);
-                          setShowProjectMenu(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm transition-colors text-gray-700 hover:bg-gray-50"
-                      >
-                        {project.name}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
+        <div aria-live="polite" aria-atomic="true" className="sr-only">{liveMessage}</div>
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="flex flex-col items-center gap-3">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-              <div className="text-muted font-medium">Loading translations...</div>
+          <div className="space-y-4">
+            <div className="bg-surface-elevated px-6 py-6 rounded-xl shadow-card border border-border">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-6">
+                  <Skeleton className="h-6 w-16" />
+                  <div className="h-6 w-px bg-border"></div>
+                  <Skeleton className="h-6 w-16" />
+                </div>
+                <Skeleton className="h-9 w-28" />
+              </div>
+              <div className="flex items-center gap-4">
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-8 w-20" />
+                <Skeleton className="h-8 w-24" />
+                <Skeleton className="h-8 w-24" />
+                <Skeleton className="h-8 w-24" />
+              </div>
+            </div>
+            <div className="w-full overflow-hidden rounded-xl bg-surface-elevated shadow-card border border-border">
+              <div className="p-6 space-y-2">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
             </div>
           </div>
         ) : projects.length === 0 ? (
-          <div className="bg-white p-12 rounded-xl shadow-card text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-3">No Projects Found</h2>
+          <div className="bg-surface-elevated p-12 rounded-xl shadow-card text-center border border-border">
+            <h2 className="text-2xl font-bold mb-3">No Projects Found</h2>
             <p className="text-muted">
               Create a project in your Supabase database to get started.
             </p>
           </div>
         ) : !selectedProject ? (
-          <div className="bg-white p-12 rounded-xl shadow-card text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-3">Select a Project</h2>
+          <div className="bg-surface-elevated p-12 rounded-xl shadow-card text-center border border-border">
+            <h2 className="text-2xl font-bold mb-3">Select a Project</h2>
             <p className="text-muted">
               Choose a project from the dropdown above to view and manage translations.
             </p>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="bg-white px-6 py-6 rounded-xl shadow-card">
+            <div className="bg-surface-elevated px-6 py-6 rounded-xl shadow-card border border-border">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-6">
-                  <div className="text-sm font-medium text-gray-700">
-                    <span className="text-lg font-bold text-gray-900">{translations.length}</span>
+                  <div className="text-sm font-medium text-muted">
+                    <span className="text-lg font-bold">{translations.length}</span>
                     <span className="ml-1.5 text-muted">keys</span>
                   </div>
-                  <div className="h-6 w-px bg-gray-200"></div>
-                  <div className="text-sm font-medium text-gray-700">
-                    <span className="text-lg font-bold text-gray-900">{languages.length}</span>
+                  <div className="h-6 w-px bg-border"></div>
+                  <div className="text-sm font-medium text-muted">
+                    <span className="text-lg font-bold">{languages.length}</span>
                     <span className="ml-1.5 text-muted">languages</span>
                   </div>
                   {filterMode !== 'all' && (
                     <>
-                      <div className="h-6 w-px bg-gray-200"></div>
-                      <div className="text-sm font-medium text-gray-700">
+                      <div className="h-6 w-px bg-border"></div>
+                      <div className="text-sm font-medium text-muted">
                         <span className="text-lg font-bold text-warning">{filteredTranslations.length}</span>
                         <span className="ml-1.5 text-muted">filtered</span>
                       </div>
@@ -305,65 +304,80 @@ export default function Home() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowExportMenu(!showExportMenu)}
-                      className="px-4 py-2 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition-colors duration-150 font-medium text-sm text-gray-700 flex items-center gap-2"
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Export
-                    </button>
-
-                    {showExportMenu && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-30"
-                          onClick={() => setShowExportMenu(false)}
-                        />
-                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-card border border-gray-200 py-2 z-40">
-                          <div className="px-4 py-2 text-xs font-medium text-muted uppercase tracking-wide border-b">
-                            Export Translations
-                          </div>
-                          <button
-                            onClick={() => {
-                              exportAllLanguages();
-                              setShowExportMenu(false);
-                            }}
-                            className="w-full text-left px-4 py-2 hover:bg-surface transition-colors text-sm text-gray-900 font-medium flex items-center gap-2"
-                          >
-                            <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-                            </svg>
-                            All Languages (JSON)
-                          </button>
-                          <div className="border-t my-2"></div>
-                          <div className="px-4 py-1 text-xs font-medium text-muted">
-                            Individual Languages:
-                          </div>
-                          {languages.map(lang => (
-                            <button
-                              key={lang.code}
-                              onClick={() => {
-                                exportLanguage(lang.code);
-                                setShowExportMenu(false);
-                              }}
-                              className="w-full text-left px-4 py-2 hover:bg-surface transition-colors text-sm text-gray-700 flex items-center justify-between"
-                            >
-                              <span>
-                                <span className="font-medium">{lang.code.toUpperCase()}</span>
-                                {lang.name && <span className="text-xs text-muted ml-2">({lang.name})</span>}
-                              </span>
-                            </button>
-                          ))}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="md" className="gap-2">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Export
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-64" align="end">
+                      <DropdownMenuLabel>Export Translations</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => exportAllLanguages()} className="gap-2">
+                        <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                        </svg>
+                        All Languages (JSON)
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>Individual Languages</DropdownMenuLabel>
+                      {languages.map(lang => (
+                        <DropdownMenuItem key={lang.code} onClick={() => exportLanguage(lang.code)}>
+                          <span className="font-medium">{lang.code.toUpperCase()}</span>
+                          {lang.name && <span className="text-xs text-muted ml-2">({lang.name})</span>}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Dialog open={isAddKeyOpen} onOpenChange={setIsAddKeyOpen}>
+                    <DialogTrigger asChild>
+                      <Button>+ Add New Key</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Add New Translation Key</DialogTitle>
+                        <DialogDescription>Provide a unique key name. You can add values per-language later.</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-muted-foreground mb-1">Key</label>
+                          <input
+                            value={newKeyName}
+                            onChange={(e) => setNewKeyName(e.target.value)}
+                            placeholder="e.g. common.save"
+                            className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+                          />
                         </div>
-                      </>
-                    )}
-                  </div>
-                  <button className="px-4 py-2 bg-primary text-white rounded-lg shadow-sm hover:bg-primary-600 transition-colors duration-150 font-medium text-sm">
-                    + Add New Key
-                  </button>
+                        <div className="flex justify-end gap-2 pt-2">
+                          <Button variant="outline" onClick={() => setIsAddKeyOpen(false)}>Cancel</Button>
+                          <Button
+                            onClick={async () => {
+                              if (!newKeyName.trim() || !selectedProject) return;
+                              try {
+                                setCreatingKey(true);
+                                const { id } = await createTranslationKey(selectedProject, newKeyName.trim());
+                                setLiveMessage(`Created key ${newKeyName}`);
+                                setNewKeyName('');
+                                setIsAddKeyOpen(false);
+                                // Reload data to include new key
+                                await loadProjectData(selectedProject);
+                              } catch (e) {
+                                console.error(e);
+                                setLiveMessage('Failed to create key');
+                              } finally {
+                                setCreatingKey(false);
+                              }
+                            }}
+                            disabled={!newKeyName.trim() || creatingKey}
+                          >
+                            {creatingKey ? 'Creating…' : 'Create Key'}
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </div>
 
@@ -375,9 +389,9 @@ export default function Home() {
                     placeholder="Search translation keys or values..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:border-primary transition-all text-sm"
+                    className="w-full px-4 py-2 pl-10 border border-border rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all text-sm"
                   />
-                  <svg className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="absolute left-3 top-2.5 h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </div>
@@ -387,8 +401,8 @@ export default function Home() {
                     onClick={() => setFilterMode('all')}
                     className={`px-3 py-1 rounded-md border text-sm font-medium transition-colors duration-150 ${
                       filterMode === 'all'
-                        ? 'border-gray-300 bg-gray-900 text-white'
-                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border text-muted hover:bg-surface-hover'
                     }`}
                   >
                     All
@@ -397,8 +411,8 @@ export default function Home() {
                     onClick={() => setFilterMode('missing')}
                     className={`px-3 py-1 rounded-md border text-sm font-medium transition-colors duration-150 ${
                       filterMode === 'missing'
-                        ? 'border-warning bg-warning text-white'
-                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                        ? 'border-warning bg-warning text-primary-foreground'
+                        : 'border-border text-muted hover:bg-surface-hover'
                     }`}
                   >
                     Missing
@@ -407,66 +421,47 @@ export default function Home() {
                     onClick={() => setFilterMode('complete')}
                     className={`px-3 py-1 rounded-md border text-sm font-medium transition-colors duration-150 ${
                       filterMode === 'complete'
-                        ? 'border-success bg-success text-white'
-                        : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                        ? 'border-success bg-success text-primary-foreground'
+                        : 'border-border text-muted hover:bg-surface-hover'
                     }`}
                   >
                     Complete
                   </button>
 
                   {languages.length > 0 && (
-                    <div className="relative ml-2">
-                      <button
-                        onClick={() => setShowColumnMenu(!showColumnMenu)}
-                        className="px-3 py-1 rounded-md border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors duration-150 flex items-center gap-2"
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="ml-2 gap-2">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                      </svg>
+                      Columns
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>Show/Hide Languages</DropdownMenuLabel>
+                    {languages.map(lang => (
+                      <DropdownMenuCheckboxItem
+                        key={lang.code}
+                        checked={visibleLanguages.has(lang.code)}
+                        onCheckedChange={(checked) => {
+                          const newVisible = new Set(visibleLanguages);
+                          if (!checked) {
+                            newVisible.delete(lang.code);
+                          } else {
+                            newVisible.add(lang.code);
+                          }
+                          setVisibleLanguages(newVisible);
+                        }}
                       >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                        </svg>
-                        Columns
-                      </button>
-
-                      {showColumnMenu && (
-                        <>
-                          <div
-                            className="fixed inset-0 z-30"
-                            onClick={() => setShowColumnMenu(false)}
-                          />
-                          <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-card border border-gray-200 py-2 z-40">
-                            <div className="px-4 py-2 text-xs font-medium text-muted uppercase tracking-wide border-b">
-                              Show/Hide Languages
-                            </div>
-                            {languages.map(lang => (
-                              <label
-                                key={lang.code}
-                                className="flex items-center gap-3 px-4 py-2 hover:bg-surface cursor-pointer transition-colors"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={visibleLanguages.has(lang.code)}
-                                  onChange={() => {
-                                    const newVisible = new Set(visibleLanguages);
-                                    if (newVisible.has(lang.code)) {
-                                      newVisible.delete(lang.code);
-                                    } else {
-                                      newVisible.add(lang.code);
-                                    }
-                                    setVisibleLanguages(newVisible);
-                                  }}
-                                  className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-2 focus:ring-primary"
-                                />
-                                <span className="text-sm text-gray-900 font-medium">
-                                  {lang.code.toUpperCase()}
-                                </span>
-                                {lang.name && (
-                                  <span className="text-xs text-muted ml-auto">{lang.name}</span>
-                                )}
-                              </label>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                        <span className="text-sm font-medium">{lang.code.toUpperCase()}</span>
+                        {lang.name && (
+                          <span className="text-xs text-muted ml-2">{lang.name}</span>
+                        )}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
                   )}
                 </div>
               </div>
@@ -475,7 +470,6 @@ export default function Home() {
             <TranslationGrid
               data={filteredTranslations}
               languages={languages.filter(l => visibleLanguages.has(l.code))}
-              projectId={selectedProject}
             />
           </div>
         )}

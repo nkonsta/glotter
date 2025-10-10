@@ -1,67 +1,179 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  /* Design System Colors */
-  --color-primary: #2b6cb0;
-  --color-primary-600: #2c5282;
-  --color-accent: #7c3aed;
-  --color-surface: #f8fafc;
-  --color-muted: #64748b;
-  --color-row-alt: #f1f5f9;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-
-  /* Legacy vars for compatibility */
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-
-  /* Typography */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: var(--font-geist-mono);
-
-  /* Border Radius */
+  color-scheme: light;
+  --background: 0 0% 100%;
+  --foreground: 0 0% 9%;
+  --surface: 210 40% 98%;
+  --surface-elevated: 210 40% 96%;
+  --surface-hover: 210 40% 94%;
+  --border: 210 33% 92%;
+  --border-strong: 210 28% 85%;
+  --muted: 215 16% 47%;
+  --muted-foreground: 215 20% 35%;
+  --primary: 211 61% 45%;
+  --primary-foreground: 210 40% 98%;
+  --success: 160 84% 39%;
+  --warning: 38 92% 50%;
+  --danger: 0 84% 60%;
+  --info: 199 89% 48%;
+  --accent: 267 83% 59%;
+  --ring: 211 61% 45%;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
   --radius-xl: 1rem;
-
-  /* Shadows */
   --shadow-card: 0 4px 18px rgba(16, 24, 40, 0.06);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root[data-theme="dark"],
+.dark {
+  color-scheme: dark;
+  --background: 222 47% 11%;
+  --foreground: 210 20% 98%;
+  --surface: 222 47% 14%;
+  --surface-elevated: 222 47% 16%;
+  --surface-hover: 222 47% 18%;
+  --border: 222 30% 24%;
+  --border-strong: 222 30% 32%;
+  --muted: 215 16% 70%;
+  --muted-foreground: 215 20% 80%;
+  --primary: 211 82% 63%;
+  --primary-foreground: 222 47% 12%;
+  --success: 160 84% 45%;
+  --warning: 38 92% 60%;
+  --danger: 0 84% 66%;
+  --info: 199 89% 60%;
+  --accent: 267 83% 70%;
+  --ring: 211 82% 63%;
+}
+
+:root,
+:root[data-theme="light"],
+:root:not([data-theme="dark"]) {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
   font-family: var(--font-sans);
+}
+
+.bg-background {
+  background-color: hsl(var(--background));
+}
+
+.bg-surface {
+  background-color: hsl(var(--surface));
+}
+
+.bg-surface-elevated {
+  background-color: hsl(var(--surface-elevated));
+}
+
+.bg-surface-hover {
+  background-color: hsl(var(--surface-hover));
+}
+
+.text-foreground {
+  color: hsl(var(--foreground));
+}
+
+.text-muted {
+  color: hsl(var(--muted));
+}
+
+.text-muted-foreground {
+  color: hsl(var(--muted-foreground));
+}
+
+.border-border {
+  border-color: hsl(var(--border));
+}
+
+.border-border-strong {
+  border-color: hsl(var(--border-strong));
+}
+
+.text-primary {
+  color: hsl(var(--primary));
+}
+
+.bg-primary {
+  background-color: hsl(var(--primary));
+}
+
+.bg-primary-soft {
+  background-color: hsl(var(--primary) / 0.12);
+}
+
+.bg-success {
+  background-color: hsl(var(--success));
+}
+
+.bg-warning {
+  background-color: hsl(var(--warning));
+}
+
+.bg-danger {
+  background-color: hsl(var(--danger));
+}
+
+.bg-info {
+  background-color: hsl(var(--info));
+}
+
+.bg-accent {
+  background-color: hsl(var(--accent));
+}
+
+.text-success {
+  color: hsl(var(--success));
+}
+
+.text-warning {
+  color: hsl(var(--warning));
+}
+
+.text-danger {
+  color: hsl(var(--danger));
+}
+
+.text-primary-foreground {
+  color: hsl(var(--primary-foreground));
+}
+
+.ring-primary {
+  --tw-ring-color: hsl(var(--ring));
+}
+
+.shadow-card {
+  box-shadow: var(--shadow-card);
 }
 
 /* Modern select dropdown styling */
 select {
   background-image: none;
+  background-color: hsl(var(--surface));
+  color: hsl(var(--foreground));
 }
 
 select option {
   padding: 0.5rem 0.75rem;
-  background-color: white;
-  color: #374151;
+  background-color: hsl(var(--surface));
+  color: hsl(var(--foreground));
   font-weight: 500;
 }
 
 select option:checked {
-  background-color: #eff6ff;
-  color: #1e40af;
+  background-color: hsl(var(--primary) / 0.14);
+  color: hsl(var(--primary));
 }
 
 select option:hover {
-  background-color: #f9fafb;
+  background-color: hsl(var(--surface-hover));
 }

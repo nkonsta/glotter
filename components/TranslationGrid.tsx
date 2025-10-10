@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -14,10 +14,9 @@ import { updateTranslation, createTranslation } from '@/lib/translations';
 interface TranslationGridProps {
   data: TranslationRow[];
   languages: Array<{ code: string; name: string | null }>;
-  projectId: string;
 }
 
-export default function TranslationGrid({ data, languages, projectId }: TranslationGridProps) {
+export default function TranslationGrid({ data, languages }: TranslationGridProps) {
   const [tableData, setTableData] = useState(data);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -57,13 +56,13 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
     }
   };
 
-  const handleCellClick = (actualRowIndex: number, langCode: string) => {
+  const handleCellClick = useCallback((actualRowIndex: number, langCode: string) => {
     const currentValue = tableData[actualRowIndex].translations[langCode]?.value || '';
     setEditValue(currentValue);
     setEditingCell({ row: actualRowIndex, col: langCode });
-  };
+  }, [tableData]);
 
-  const handleSave = async (actualRowIndex: number, langCode: string) => {
+  const handleSave = useCallback(async (actualRowIndex: number, langCode: string) => {
     const row = tableData[actualRowIndex];
     const translation = row.translations[langCode];
 
@@ -94,20 +93,20 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
       console.error('Failed to save translation:', error);
       alert('Failed to save translation. Please try again.');
     }
-  };
+  }, [editValue, tableData]);
 
-  const handleKeyDown = (e: React.KeyboardEvent, rowIndex: number, langCode: string) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent, rowIndex: number, langCode: string) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSave(rowIndex, langCode);
     } else if (e.key === 'Escape') {
       setEditingCell(null);
     }
-  };
+  }, [handleSave]);
 
   const columnHelper = createColumnHelper<TranslationRow>();
 
-  const columns: ColumnDef<TranslationRow, any>[] = useMemo(() => [
+  const columns = useMemo(() => [
     // Checkbox column
     columnHelper.display({
       id: 'select',
@@ -117,7 +116,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
           checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
           onChange={toggleAllRows}
           aria-label="Select all rows"
-          className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-2 focus:ring-primary cursor-pointer"
+          className="w-4 h-4 text-primary border border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-surface"
         />
       ),
       cell: info => {
@@ -129,7 +128,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
             checked={selectedRows.has(actualRowIndex)}
             onChange={() => toggleRowSelection(actualRowIndex)}
             aria-label={`Select row ${tableData[actualRowIndex]?.key}`}
-            className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-2 focus:ring-primary cursor-pointer"
+            className="w-4 h-4 text-primary border border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-surface"
           />
         );
       },
@@ -138,7 +137,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
     columnHelper.accessor('key', {
       header: 'Key',
       cell: info => (
-        <div className="font-medium text-gray-900 tracking-tight text-sm min-w-[180px] max-w-[220px] break-words">
+        <div className="font-medium text-foreground tracking-tight text-sm min-w-[180px] max-w-[220px] break-words">
           {info.getValue()}
         </div>
       ),
@@ -150,8 +149,8 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
           id: lang.code,
           header: () => (
             <div className="text-center">
-              <div className="font-medium text-gray-700 text-xs uppercase tracking-wide">{lang.code}</div>
-              {lang.name && <div className="text-xs font-normal text-gray-500 mt-0.5">{lang.name}</div>}
+            <div className="font-medium text-muted-foreground text-xs uppercase tracking-wide">{lang.code}</div>
+            {lang.name && <div className="text-xs font-normal text-muted mt-0.5">{lang.name}</div>}
             </div>
           ),
           cell: info => {
@@ -159,7 +158,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
             const actualRowIndex = startIndex + displayRowIndex;
             const langCode = lang.code;
             const isEditing = editingCell?.row === actualRowIndex && editingCell?.col === langCode;
-            const value = info.getValue() as string | null;
+            const value = info.getValue();
 
             return (
               <div className="min-w-[250px] max-w-[400px]">
@@ -178,22 +177,22 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
                     onClick={() => handleCellClick(actualRowIndex, langCode)}
                     className={`relative p-2 text-sm cursor-pointer rounded-md transition-all duration-150 ease-out min-h-[44px] ${
                       !value
-                        ? 'hover:bg-amber-50/50'
-                        : 'hover:bg-gray-50'
+                        ? 'hover:bg-[hsl(var(--warning)/0.14)]'
+                        : 'hover:bg-surface-hover'
                     }`}
                   >
                     {!value ? (
-                      <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-amber-50 text-amber-600">
+                      <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
                         Missing
                       </span>
                     ) : (
                       <div className="flex items-start justify-between gap-2">
-                        <div className="text-gray-700 flex-1">{value}</div>
+                        <div className="text-foreground flex-1">{value}</div>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 flex-shrink-0">
-                          <svg className="w-4 h-4 text-gray-400 hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 text-muted hover:text-foreground transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                           </svg>
-                          <svg className="w-4 h-4 text-gray-400 hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 text-muted hover:text-foreground transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                           </svg>
                         </div>
@@ -207,7 +206,22 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
         }
       )
     ),
-  ], [languages, startIndex, selectedRows, paginatedData.length]);
+  ], [
+    languages,
+    startIndex,
+    selectedRows,
+    paginatedData.length,
+    handleCellClick,
+    handleKeyDown,
+    handleSave,
+    tableData,
+    toggleAllRows,
+    toggleRowSelection,
+    editValue,
+    editingCell?.row,
+    editingCell?.col,
+    columnHelper,
+  ]);
 
   const table = useReactTable({
     data: paginatedData,
@@ -256,14 +270,14 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
     <div className="space-y-4">
       {/* Bulk Actions Toolbar */}
       {selectedRows.size > 0 && (
-        <div className="bg-primary/10 border border-primary/30 rounded-lg px-6 py-3 flex items-center justify-between">
+        <div className="bg-primary-soft border border-primary/40 rounded-lg px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-gray-900">
+            <span className="text-sm font-medium text-foreground">
               {selectedRows.size} row{selectedRows.size > 1 ? 's' : ''} selected
             </span>
             <button
               onClick={() => setSelectedRows(new Set())}
-              className="text-sm text-muted hover:text-gray-900 transition-colors"
+              className="text-sm text-muted hover:text-foreground transition-colors"
             >
               Clear selection
             </button>
@@ -271,7 +285,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
           <div className="flex items-center gap-2">
             <button
               onClick={handleBulkExport}
-              className="px-3 py-1.5 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors duration-150 flex items-center gap-2"
+              className="px-3 py-1.5 bg-surface border border-border rounded-md text-sm font-medium text-foreground hover:bg-surface-hover transition-colors duration-150 flex items-center gap-2"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -280,7 +294,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
             </button>
             <button
               onClick={handleBulkDelete}
-              className="px-3 py-1.5 bg-danger border border-danger rounded-md text-sm font-medium text-white hover:bg-red-600 transition-colors duration-150 flex items-center gap-2"
+              className="px-3 py-1.5 bg-danger border border-danger rounded-md text-sm font-medium text-primary-foreground hover:bg-danger/90 transition-colors duration-150 flex items-center gap-2"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -291,21 +305,21 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
         </div>
       )}
 
-      <div className="w-full overflow-hidden rounded-xl bg-white shadow-sm">
+      <div className="w-full overflow-hidden rounded-xl bg-surface-elevated shadow-card border border-border">
       <div className="overflow-auto">
         <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-20 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+          <thead className="sticky top-0 z-20 bg-surface-elevated shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
             {table.getHeaderGroups().map(headerGroup => (
-              <tr key={headerGroup.id} className="border-b border-gray-200">
+              <tr key={headerGroup.id} className="border-b border-border">
                 {headerGroup.headers.map((header, idx) => {
                   const isCheckbox = idx === 0;
                   const isKeyColumn = idx === 1;
                   return (
                     <th
                       key={header.id}
-                      className={`py-3 text-left text-xs font-medium uppercase text-gray-500 tracking-wide whitespace-normal ${
-                        isCheckbox ? 'sticky left-0 z-10 bg-white px-4 w-16' :
-                        isKeyColumn ? 'sticky z-10 bg-white px-4' : 'px-4'
+                      className={`py-3 text-left text-xs font-medium uppercase text-muted tracking-wide whitespace-normal ${
+                        isCheckbox ? 'sticky left-0 z-10 bg-surface-elevated px-4 w-16' :
+                        isKeyColumn ? 'sticky z-10 bg-surface-elevated px-4' : 'px-4'
                       }`}
                       style={isKeyColumn ? { left: '4rem' } : undefined}
                     >
@@ -316,7 +330,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
               </tr>
             ))}
           </thead>
-          <tbody className="bg-white divide-y divide-gray-100">
+          <tbody className="bg-surface-elevated divide-y divide-border">
             {table.getRowModel().rows.map((row, idx) => {
               const actualRowIndex = startIndex + idx;
               const isSelected = selectedRows.has(actualRowIndex);
@@ -324,8 +338,8 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
                 <tr
                   key={row.id}
                   data-selected={isSelected}
-                  className={`group transition-all duration-150 ease-out h-14 hover:bg-gray-50 hover:shadow-sm ${
-                    isSelected ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+          className={`group transition-all duration-150 ease-out h-14 hover:bg-surface-hover/70 hover:shadow-sm ${
+                    isSelected ? 'bg-primary-soft border-l-4 border-l-primary' : ''
                   }`}
                 >
                   {row.getVisibleCells().map((cell, cellIdx) => {
@@ -334,7 +348,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
                     return (
                       <td
                         key={cell.id}
-                        className={`py-3 px-4 text-sm whitespace-normal align-top ${
+                        className={`py-3 px-4 text-sm whitespace-normal align-top text-foreground ${
                           isCheckbox ? 'sticky left-0 z-10 bg-inherit w-16' :
                           isKeyColumn ? 'sticky z-10 bg-inherit' : ''
                         }`}
@@ -358,24 +372,24 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
       )}
 
       {tableData.length > 0 && (
-        <div className="border-t border-gray-100 px-6 py-4 bg-gray-50/50">
+        <div className="border-t border-border px-6 py-4 bg-surface">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              <span className="font-medium text-gray-900">{startIndex + 1}</span>
-              <span className="text-gray-500 mx-1">-</span>
-              <span className="font-medium text-gray-900">{Math.min(endIndex, tableData.length)}</span>
-              <span className="text-gray-500 mx-1">of</span>
-              <span className="font-medium text-gray-900">{tableData.length}</span>
+                <div className="text-sm text-muted">
+                  <span className="font-medium text-foreground">{startIndex + 1}</span>
+                  <span className="mx-1 text-muted">-</span>
+                  <span className="font-medium text-foreground">{Math.min(endIndex, tableData.length)}</span>
+                  <span className="mx-1 text-muted">of</span>
+                  <span className="font-medium text-foreground">{tableData.length}</span>
             </div>
 
             <div className="flex items-center gap-3">
               <div className="relative">
                 <button
                   onClick={() => setShowPageSizeMenu(!showPageSizeMenu)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-gray-700 font-medium min-w-[70px]"
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-sm bg-surface hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-foreground font-medium min-w-[70px]"
                 >
                   <span>{pageSize}</span>
-                  <svg className="h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="h-3 w-3 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
@@ -386,7 +400,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
                       className="fixed inset-0 z-30"
                       onClick={() => setShowPageSizeMenu(false)}
                     />
-                    <div className="absolute bottom-full mb-1 right-0 w-24 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-40">
+                        <div className="absolute bottom-full mb-1 right-0 w-24 bg-surface-elevated rounded-lg shadow-card border border-border py-1 z-40">
                       {[25, 50, 100, 200].map((size) => (
                         <button
                           key={size}
@@ -395,10 +409,10 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
                             setCurrentPage(1);
                             setShowPageSizeMenu(false);
                           }}
-                          className={`w-full text-center px-3 py-2 text-sm transition-colors ${
+                              className={`w-full text-center px-3 py-2 text-sm transition-colors ${
                             size === pageSize
-                              ? 'bg-blue-50 text-blue-700 font-medium'
-                              : 'text-gray-700 hover:bg-gray-50'
+                              ? 'bg-primary-soft text-primary font-medium'
+                              : 'text-muted hover:bg-surface-hover'
                           }`}
                         >
                           {size}
@@ -414,7 +428,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
                   onClick={() => goToPage(1)}
                   disabled={currentPage === 1}
                   aria-label="First page"
-                  className="w-8 h-8 flex items-center justify-center border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 hover:border-gray-300 transition-all duration-150 text-gray-700"
+                    className="w-8 h-8 flex items-center justify-center border border-border rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-hover hover:border-border-strong transition-all duration-150 text-muted"
                 >
                   «
                 </button>
@@ -422,20 +436,20 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
                   onClick={() => goToPage(currentPage - 1)}
                   disabled={currentPage === 1}
                   aria-label="Previous page"
-                  className="w-8 h-8 flex items-center justify-center border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 hover:border-gray-300 transition-all duration-150 text-gray-700"
+                    className="w-8 h-8 flex items-center justify-center border border-border rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-hover hover:border-border-strong transition-all duration-150 text-muted"
                 >
                   ‹
                 </button>
 
-                <span className="px-3 py-1.5 text-sm font-medium text-gray-700 min-w-[100px] text-center">
-                  {currentPage} <span className="text-gray-400">of</span> {totalPages}
+                  <span className="px-3 py-1.5 text-sm font-medium text-muted min-w-[100px] text-center">
+                    {currentPage} <span className="text-muted-foreground/70">of</span> {totalPages}
                 </span>
 
                 <button
                   onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage === totalPages}
                   aria-label="Next page"
-                  className="w-8 h-8 flex items-center justify-center border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 hover:border-gray-300 transition-all duration-150 text-gray-700"
+                    className="w-8 h-8 flex items-center justify-center border border-border rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-hover hover:border-border-strong transition-all duration-150 text-muted"
                 >
                   ›
                 </button>
@@ -443,7 +457,7 @@ export default function TranslationGrid({ data, languages, projectId }: Translat
                   onClick={() => goToPage(totalPages)}
                   disabled={currentPage === totalPages}
                   aria-label="Last page"
-                  className="w-8 h-8 flex items-center justify-center border border-gray-200 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 hover:border-gray-300 transition-all duration-150 text-gray-700"
+                    className="w-8 h-8 flex items-center justify-center border border-border rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-hover hover:border-border-strong transition-all duration-150 text-muted"
                 >
                   »
                 </button>

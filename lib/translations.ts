@@ -32,7 +32,7 @@ export async function getTranslationsGrid(projectId: string): Promise<Translatio
 
     languages.forEach(lang => {
       const translation = key.translations?.find(
-        (t: any) => t.project_language_id === lang.id
+        (t: { id: string; project_language_id: string; value: string | null }) => t.project_language_id === lang.id
       );
 
       translationsMap[lang.language_code] = {
@@ -80,6 +80,20 @@ export async function createTranslation(
     .insert({ key_id: keyId, project_language_id: projectLanguageId, value });
 
   if (error) throw error;
+}
+
+/**
+ * Create a new translation key for a project
+ */
+export async function createTranslationKey(projectId: string, key: string): Promise<{ id: string; key: string }> {
+  const { data, error } = await supabase
+    .from('translation_keys')
+    .insert({ project_id: projectId, key })
+    .select('id, key')
+    .single();
+
+  if (error) throw error;
+  return data as { id: string; key: string };
 }
 
 /**
