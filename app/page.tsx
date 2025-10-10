@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey } from '@/lib/translations';
+import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import TranslationGrid from '@/components/TranslationGrid';
 import { Button } from '@/components/ui/Button';
@@ -56,6 +56,20 @@ export default function Home() {
   const [panelKeyIndex, setPanelKeyIndex] = useState<number | null>(null);
   const [columnsSearch, setColumnsSearch] = useState('');
   const VISIBLE_KEY_PREFIX = 'glotter-visible-langs-';
+  // Project & language dialogs
+  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [initialLangs, setInitialLangs] = useState('en');
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [isManageLangsOpen, setIsManageLangsOpen] = useState(false);
+  const [newLangCode, setNewLangCode] = useState('');
+  const [newLangName, setNewLangName] = useState('');
+  const [langSubmitting, setLangSubmitting] = useState(false);
+  const [editingLang, setEditingLang] = useState<string | null>(null);
+  const [editingLangName, setEditingLangName] = useState<string>('');
+  const [isDeleteProjectOpen, setIsDeleteProjectOpen] = useState(false);
+  const [confirmProjectName, setConfirmProjectName] = useState('');
+  const [deletingProject, setDeletingProject] = useState(false);
 
   const sortedLanguages = useMemo(() => {
     return [...languages].sort((a, b) => {
@@ -277,6 +291,10 @@ export default function Home() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-56">
+                    <DropdownMenuItem onClick={() => setIsCreateProjectOpen(true)} className="font-medium">
+                      + New project…
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     {projects.map((project) => (
                       <DropdownMenuItem
                         key={project.id}
@@ -293,6 +311,23 @@ export default function Home() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
+                {selectedProject && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="px-2 py-1" aria-label="Project actions">
+                        <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <circle cx="5" cy="12" r="2" />
+                          <circle cx="12" cy="12" r="2" />
+                          <circle cx="19" cy="12" r="2" />
+                        </svg>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-48" align="start">
+                      <DropdownMenuItem onClick={() => setIsManageLangsOpen(true)}>Manage languages…</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setIsDeleteProjectOpen(true)} className="text-danger focus:text-danger">Delete project…</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </>
             )}
           </div>
@@ -335,8 +370,11 @@ export default function Home() {
           <div className="bg-surface-elevated p-12 rounded-xl shadow-card text-center border border-border">
             <h2 className="text-2xl font-bold mb-3">No Projects Found</h2>
             <p className="text-muted">
-              Create a project in your Supabase database to get started.
+              Create a project to get started.
             </p>
+            <div className="mt-6">
+              <Button onClick={() => setIsCreateProjectOpen(true)}>+ Create project</Button>
+            </div>
           </div>
         ) : !selectedProject ? (
           <div className="bg-surface-elevated p-12 rounded-xl shadow-card text-center border border-border">
@@ -609,6 +647,283 @@ export default function Home() {
           </div>
         )}
       </main>
+      {/* Create Project Dialog */}
+      <Dialog open={isCreateProjectOpen} onOpenChange={setIsCreateProjectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create project</DialogTitle>
+            <DialogDescription>Provide a name and optional initial languages (comma-separated codes).</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Project name</label>
+              <input
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+                placeholder="e.g. Mobile App"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Initial languages</label>
+              <input
+                value={initialLangs}
+                onChange={(e) => setInitialLangs(e.target.value)}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+                placeholder="en:English, fr:French, de:German (names optional)"
+              />
+              <p className="mt-1 text-xs text-muted">Format: code or code:name, comma-separated. Example: en:English, fr:French</p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setIsCreateProjectOpen(false)}>Cancel</Button>
+              <Button
+                onClick={async () => {
+                  if (!newProjectName.trim()) return;
+                  try {
+                    setCreatingProject(true);
+                    const langs = initialLangs
+                      .split(',')
+                      .map(s => s.trim())
+                      .filter(Boolean)
+                      .map(token => {
+                        const parts = token.split(':');
+                        const code = (parts[0] || '').trim().toLowerCase();
+                        const name = parts.slice(1).join(':').trim();
+                        return { code, name: name || undefined as string | undefined };
+                      });
+                    const project = await createProject(newProjectName.trim(), langs);
+                    setProjects(prev => [...prev, project]);
+                    setSelectedProject(project.id);
+                    setIsCreateProjectOpen(false);
+                    setNewProjectName('');
+                    setInitialLangs('en');
+                    setLiveMessage(`Created project ${project.name}`);
+                    toast({ title: 'Project created', description: `Project ${project.name} created`, variant: 'success' });
+                  } catch (e) {
+                    console.error(e);
+                    toast({ title: 'Error', description: 'Failed to create project', variant: 'error' });
+                  } finally {
+                    setCreatingProject(false);
+                  }
+                }}
+                disabled={!newProjectName.trim() || creatingProject}
+              >
+                {creatingProject ? (
+                  <span className="inline-flex items-center gap-2"><Spinner size={14} />Creating…</span>
+                ) : 'Create'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manage Languages Dialog */}
+      <Dialog open={isManageLangsOpen} onOpenChange={setIsManageLangsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Manage languages</DialogTitle>
+            <DialogDescription>Add or remove languages for this project.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Code</label>
+                <input
+                  value={newLangCode}
+                  onChange={(e) => setNewLangCode(e.target.value)}
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+                  placeholder="e.g. en, fr, pt-br"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Name (optional)</label>
+                <input
+                  value={newLangName}
+                  onChange={(e) => setNewLangName(e.target.value)}
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+                  placeholder="e.g. English"
+                />
+              </div>
+              <Button
+                onClick={async () => {
+                  if (!selectedProject || !newLangCode.trim()) return;
+                  try {
+                    setLangSubmitting(true);
+                    const code = newLangCode.trim();
+                    await addLanguage(selectedProject, code, newLangName.trim() || undefined);
+                    await loadProjectData(selectedProject);
+                    setNewLangCode('');
+                    setNewLangName('');
+                    toast({ title: 'Language added', description: `Added ${code.toUpperCase()}`, variant: 'success' });
+                  } catch (e) {
+                    console.error(e);
+                    toast({ title: 'Error', description: 'Failed to add language', variant: 'error' });
+                  } finally {
+                    setLangSubmitting(false);
+                  }
+                }}
+                disabled={!newLangCode.trim() || langSubmitting}
+              >
+                {langSubmitting ? 'Adding…' : 'Add'}
+              </Button>
+            </div>
+
+            <div className="border border-border rounded-lg divide-y divide-border">
+              {sortedLanguages.length === 0 && (
+                <div className="p-3 text-sm text-muted">No languages yet.</div>
+              )}
+              {sortedLanguages.map((lang) => (
+                <div key={lang.code} className="p-3 flex items-center justify-between gap-3">
+                  <div className="text-sm flex-1">
+                    <span className="font-medium mr-2">{lang.code.toUpperCase()}</span>
+                    {editingLang === lang.code ? (
+                      <input
+                        autoFocus
+                        value={editingLangName}
+                        onChange={(e) => setEditingLangName(e.target.value)}
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            if (!selectedProject) return;
+                            try {
+                              setLangSubmitting(true);
+                              await updateLanguageName(selectedProject, lang.code, editingLangName.trim() || null);
+                              await loadProjectData(selectedProject);
+                              setEditingLang(null);
+                              setEditingLangName('');
+                              toast({ title: 'Saved', description: 'Language name updated', variant: 'success' });
+                            } catch (err) {
+                              console.error(err);
+                              toast({ title: 'Error', description: 'Failed to update language name', variant: 'error' });
+                            } finally {
+                              setLangSubmitting(false);
+                            }
+                          } else if (e.key === 'Escape') {
+                            setEditingLang(null);
+                            setEditingLangName('');
+                          }
+                        }}
+                        className="px-2 py-1 border border-border rounded bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="Display name"
+                      />
+                    ) : (
+                      <button
+                        className="text-muted hover:text-foreground"
+                        onClick={() => {
+                          setEditingLang(lang.code);
+                          setEditingLangName(lang.name || '');
+                        }}
+                        aria-label={`Edit name for ${lang.code}`}
+                      >
+                        {lang.name ? <span>{lang.name}</span> : <span className="italic text-muted">Add name</span>}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {editingLang === lang.code && (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          if (!selectedProject) return;
+                          try {
+                            setLangSubmitting(true);
+                            await updateLanguageName(selectedProject, lang.code, editingLangName.trim() || null);
+                            await loadProjectData(selectedProject);
+                            setEditingLang(null);
+                            setEditingLangName('');
+                            toast({ title: 'Saved', description: 'Language name updated', variant: 'success' });
+                          } catch (err) {
+                            console.error(err);
+                            toast({ title: 'Error', description: 'Failed to update language name', variant: 'error' });
+                          } finally {
+                            setLangSubmitting(false);
+                          }
+                        }}
+                        disabled={langSubmitting}
+                      >
+                        Save
+                      </Button>
+                    )}
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={async () => {
+                        if (!selectedProject) return;
+                        if (sortedLanguages.length <= 1) {
+                          toast({ title: 'Cannot delete', description: 'Add another language before removing the last one.', variant: 'error' });
+                          return;
+                        }
+                        try {
+                          setLangSubmitting(true);
+                          await deleteLanguage(selectedProject, lang.code);
+                          await loadProjectData(selectedProject);
+                          toast({ title: 'Language removed', description: `Removed ${lang.code.toUpperCase()}`, variant: 'success' });
+                        } catch (e) {
+                          console.error(e);
+                          toast({ title: 'Error', description: 'Failed to remove language', variant: 'error' });
+                        } finally {
+                          setLangSubmitting(false);
+                        }
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Project Dialog */}
+      <Dialog open={isDeleteProjectOpen} onOpenChange={setIsDeleteProjectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete project</DialogTitle>
+            <DialogDescription>This will delete the project and all keys and translations. Type the project name to confirm.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <input
+              value={confirmProjectName}
+              onChange={(e) => setConfirmProjectName(e.target.value)}
+              className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-danger focus:border-danger text-sm"
+              placeholder={projects.find(p => p.id === selectedProject)?.name || ''}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsDeleteProjectOpen(false)} disabled={deletingProject}>Cancel</Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  const proj = projects.find(p => p.id === selectedProject);
+                  if (!proj || confirmProjectName.trim() !== proj.name) return;
+                  try {
+                    setDeletingProject(true);
+                    await deleteProject(proj.id);
+                    // Refresh projects list
+                    const refreshed = await getProjects();
+                    setProjects(refreshed);
+                    setSelectedProject('');
+                    setLanguages([]);
+                    setTranslations([]);
+                    setFilteredTranslations([]);
+                    setIsDeleteProjectOpen(false);
+                    setConfirmProjectName('');
+                    toast({ title: 'Project deleted', description: `${proj.name} deleted`, variant: 'success' });
+                  } catch (e) {
+                    console.error(e);
+                    toast({ title: 'Error', description: 'Failed to delete project', variant: 'error' });
+                  } finally {
+                    setDeletingProject(false);
+                  }
+                }}
+                disabled={deletingProject || confirmProjectName.trim() !== (projects.find(p => p.id === selectedProject)?.name || '')}
+              >
+                {deletingProject ? 'Deleting…' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

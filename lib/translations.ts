@@ -1,4 +1,4 @@
-import { supabase, TranslationRow } from './supabase';
+import { supabase, TranslationRow, Project, ProjectLanguage } from './supabase';
 
 /**
  * Fetch all translations for a project in grid format
@@ -152,4 +152,125 @@ export async function getProjectLanguages(projectId: string) {
 
   if (error) throw error;
   return data || [];
+}
+
+/**
+ * Create a new project and optionally initialize languages
+ */
+export async function createProject(
+  name: string,
+  initialLanguages?: Array<{ code: string; name?: string }>
+): Promise<Project> {
+  // Create project
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .insert({ name })
+    .select('*')
+    .single();
+
+  if (projectError) throw projectError;
+  const created = project as Project;
+
+  // Initialize languages (default to 'en' if none provided)
+  const languagesToInsert = (initialLanguages && initialLanguages.length > 0)
+    ? initialLanguages
+    : [{ code: 'en', name: 'English' }];
+
+  const insertRows = languagesToInsert.map(l => ({
+    project_id: created.id,
+    language_code: (l.code || '').toLowerCase(),
+    language_name: l.name ?? null,
+    is_active: true,
+  }));
+
+  const { error: langError } = await supabase
+    .from('project_languages')
+    .upsert(insertRows, { onConflict: 'project_id,language_code' });
+
+  if (langError) throw langError;
+
+  return created;
+}
+
+/**
+ * Delete a project (cascades via FK constraints)
+ */
+export async function deleteProject(projectId: string): Promise<void> {
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', projectId);
+
+  if (error) throw error;
+}
+
+/**
+ * Add or activate a language for a project
+ */
+export async function addLanguage(
+  projectId: string,
+  code: string,
+  name?: string
+): Promise<ProjectLanguage> {
+  const { data, error } = await supabase
+    .from('project_languages')
+    .upsert(
+      [{ project_id: projectId, language_code: (code || '').toLowerCase(), language_name: name ?? null, is_active: true }],
+      { onConflict: 'project_id,language_code' }
+    )
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data as ProjectLanguage;
+}
+
+/**
+ * Delete a language from a project (cascades translations via FK)
+ */
+export async function deleteLanguage(
+  projectId: string,
+  code: string
+): Promise<void> {
+  // Find language row id to ensure scoped delete
+  const { data: langRow, error: findError } = await supabase
+    .from('project_languages')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('language_code', code)
+    .single();
+
+  if (findError) throw findError;
+  if (!langRow) return;
+
+  const { error } = await supabase
+    .from('project_languages')
+    .delete()
+    .eq('id', langRow.id);
+
+  if (error) throw error;
+}
+
+/**
+ * Update a language's display name for a project
+ */
+export async function updateLanguageName(
+  projectId: string,
+  code: string,
+  name: string | null
+): Promise<void> {
+  const { data: langRow, error: findError } = await supabase
+    .from('project_languages')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('language_code', (code || '').toLowerCase())
+    .single();
+  if (findError) throw findError;
+  if (!langRow) return;
+
+  const { error } = await supabase
+    .from('project_languages')
+    .update({ language_name: name })
+    .eq('id', langRow.id);
+  if (error) throw error;
 }

@@ -99,6 +99,20 @@ glotter/
 
 ## 📖 Usage
 
+### Onboarding: Projects & Languages
+1. Create a project
+   - From the header Project dropdown, choose "New project…" (or use the empty‑state button).
+   - Enter a project name and optional initial languages (comma‑separated codes, e.g. `en, fr, de` or code:name pairs like `en:English`). Codes are normalized to lowercase.
+   - The app adds at least one language (defaults to `en`).
+2. Manage languages for a project
+   - From the Project dropdown (or the Columns menu footer), select "Manage languages…".
+   - Add a language by code (e.g. `pt-br`) and optional display name. Codes are normalized to lowercase. You can edit a language's name later in "Manage languages…".
+   - Remove a language to delete all its translations in this project.
+   - You cannot remove the last remaining language; add another first.
+3. Delete a project
+   - From the Project dropdown, select "Delete project…".
+   - Type the project name to confirm. This removes the project, its languages, keys, and translations.
+
 ### Viewing Translations
 1. Select a project from the dropdown
 2. View translation keys and their values across languages
@@ -184,6 +198,18 @@ CREATE TABLE translations (
 - [ ] Can switch between projects
 - [ ] Performance is smooth with thousands of keys
 
+### CRUD Flow (Projects & Languages)
+- [ ] Create a project (with and without custom initial languages)
+- [ ] Selected project auto-loads languages and empty grid
+- [ ] Add a language (e.g., `fr`) and see column appear after reload
+- [ ] Remove a language and confirm its column/translations are gone
+- [ ] Block removing the last remaining language (error message shown)
+- [ ] Delete a project after typing its exact name; project disappears and UI resets
+
+Notes:
+- Database schema uses `ON DELETE CASCADE` FKs, so deletes do not leave orphan rows.
+- Language codes are accepted as provided (case not enforced at DB); UI treats them verbatim.
+
 ---
 
 ## 🔧 Technical Details
@@ -201,6 +227,10 @@ Database query functions:
 - `createTranslation(keyId, languageId, value)`
 - `getProjects()`
 - `getProjectLanguages(projectId)`
+- `createProject(name, initialLanguages?)`
+- `deleteProject(projectId)`
+- `addLanguage(projectId, code, name?)`
+- `deleteLanguage(projectId, code)`
 
 #### lib/theme.ts
 - Theme store with persistence and system preference fallback
