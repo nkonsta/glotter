@@ -18,6 +18,8 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { DropdownMenuCheckboxItem } from '@/components/ui/DropdownMenu';
 import { cn } from '@/lib/cn';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Spinner } from '@/components/ui/Spinner';
 
 interface Project {
   id: string;
@@ -372,7 +374,14 @@ export default function Home() {
                             }}
                             disabled={!newKeyName.trim() || creatingKey}
                           >
-                            {creatingKey ? 'Creating…' : 'Create Key'}
+                            {creatingKey ? (
+                              <span className="inline-flex items-center gap-2">
+                                <Spinner size={14} />
+                                Creating…
+                              </span>
+                            ) : (
+                              'Create Key'
+                            )}
                           </Button>
                         </div>
                       </div>
@@ -397,36 +406,16 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setFilterMode('all')}
-                    className={`px-3 py-1 rounded-md border text-sm font-medium transition-colors duration-150 ${
-                      filterMode === 'all'
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border text-muted hover:bg-surface-hover'
-                    }`}
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={() => setFilterMode('missing')}
-                    className={`px-3 py-1 rounded-md border text-sm font-medium transition-colors duration-150 ${
-                      filterMode === 'missing'
-                        ? 'border-warning bg-warning text-primary-foreground'
-                        : 'border-border text-muted hover:bg-surface-hover'
-                    }`}
-                  >
-                    Missing
-                  </button>
-                  <button
-                    onClick={() => setFilterMode('complete')}
-                    className={`px-3 py-1 rounded-md border text-sm font-medium transition-colors duration-150 ${
-                      filterMode === 'complete'
-                        ? 'border-success bg-success text-primary-foreground'
-                        : 'border-border text-muted hover:bg-surface-hover'
-                    }`}
-                  >
-                    Complete
-                  </button>
+                  <SegmentedControl
+                    ariaLabel="Filter translations"
+                    value={filterMode}
+                    onValueChange={(v) => setFilterMode(v as 'all' | 'missing' | 'complete')}
+                    options={[
+                      { value: 'all', label: 'All' },
+                      { value: 'missing', label: 'Missing' },
+                      { value: 'complete', label: 'Complete' },
+                    ]}
+                  />
 
                   {languages.length > 0 && (
                 <DropdownMenu>
