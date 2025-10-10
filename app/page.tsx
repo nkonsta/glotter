@@ -222,6 +222,13 @@ export default function Home() {
     setPanelOpen(true);
   }
 
+  function handleDeletedKeys(keyIds: string[]) {
+    if (!keyIds || keyIds.length === 0) return;
+    setTranslations(prev => prev.filter(r => !keyIds.includes(r.key_id)));
+    setFilteredTranslations(prev => prev.filter(r => !keyIds.includes(r.key_id)));
+    setLiveMessage(`${keyIds.length} key${keyIds.length > 1 ? 's' : ''} deleted`);
+  }
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface text-foreground">
@@ -557,6 +564,7 @@ export default function Home() {
               data={filteredTranslations}
               languages={sortedLanguages.filter(l => visibleLanguages.has(l.code))}
             onOpenAllLanguages={openAllLanguagesPanel}
+            onDeletedKeys={handleDeletedKeys}
             />
 
           <SidePanel

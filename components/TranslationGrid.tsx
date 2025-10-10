@@ -9,7 +9,9 @@ import {
   ColumnDef,
 } from '@tanstack/react-table';
 import { TranslationRow } from '@/lib/supabase';
-import { updateTranslation, createTranslation } from '@/lib/translations';
+import { updateTranslation, createTranslation, renameTranslationKey, deleteTranslationKeys } from '@/lib/translations';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
+import { Button } from '@/components/ui/Button';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/Tooltip';
 import { Languages } from 'lucide-react';
 
@@ -17,9 +19,10 @@ interface TranslationGridProps {
   data: TranslationRow[];
   languages: Array<{ code: string; name: string | null }>;
   onOpenAllLanguages?: (rowIndex: number) => void;
+  onDeletedKeys?: (keyIds: string[]) => void;
 }
 
-export default function TranslationGrid({ data, languages, onOpenAllLanguages }: TranslationGridProps) {
+export default function TranslationGrid({ data, languages, onOpenAllLanguages, onDeletedKeys }: TranslationGridProps) {
   const [tableData, setTableData] = useState(data);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -27,6 +30,11 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages }:
   const [pageSize, setPageSize] = useState(50);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [showPageSizeMenu, setShowPageSizeMenu] = useState(false);
+  // Keyboard nav removed; keep simple click-to-edit
+  // Shift-click range selection removed
+  const [renameDialog, setRenameDialog] = useState<{ open: boolean; rowIndex: number | null; value: string }>({ open: false, rowIndex: null, value: '' });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const totalPages = Math.ceil(tableData.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
@@ -40,6 +48,8 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages }:
     setSelectedRows(new Set()); // Clear selection when data changes
   }, [data]);
 
+  // Keyboard navigation logic removed
+
   const toggleRowSelection = (rowIndex: number) => {
     const newSelection = new Set(selectedRows);
     if (newSelection.has(rowIndex)) {
@@ -49,6 +59,8 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages }:
     }
     setSelectedRows(newSelection);
   };
+
+  // Range selection removed
 
   const toggleAllRows = () => {
     if (selectedRows.size === paginatedData.length) {
@@ -184,6 +196,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages }:
             const langCode = lang.code;
             const isEditing = editingCell?.row === actualRowIndex && editingCell?.col === langCode;
             const value = info.getValue();
+            // Focus management removed
 
             return (
               <div className="min-w-[250px] max-w-[400px]">
@@ -199,7 +212,9 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages }:
                   />
                 ) : (
                   <div
-                    onClick={() => handleCellClick(actualRowIndex, langCode)}
+                    onClick={() => {
+                      handleCellClick(actualRowIndex, langCode);
+                    }}
                     className={`relative p-2 text-sm cursor-pointer rounded-md transition-all duration-150 ease-out min-h-[44px] ${
                       !value
                         ? 'hover:bg-[hsl(var(--warning)/0.14)]'
@@ -259,13 +274,62 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages }:
   };
 
   const handleBulkDelete = () => {
-    if (!confirm(`Delete ${selectedRows.size} translation key(s)?`)) return;
-
-    const newData = tableData.filter((_, idx) => !selectedRows.has(idx));
-    setTableData(newData);
-    setSelectedRows(new Set());
-    // TODO: Implement actual API call to delete from Supabase
+    setDeleteDialogOpen(true);
   };
+
+  async function confirmBulkDelete() {
+    const keyIds = Array.from(selectedRows).map(idx => tableData[idx]?.key_id).filter(Boolean) as string[];
+    try {
+      setSubmitting(true);
+      await deleteTranslationKeys(keyIds);
+      // Optimistic local update
+      const newData = tableData.filter((_, idx) => !selectedRows.has(idx));
+      setTableData(newData);
+      setSelectedRows(new Set());
+      // Notify parent to refresh counts and filters
+      onDeletedKeys?.(keyIds);
+      setDeleteDialogOpen(false);
+    } catch (e) {
+      console.error(e);
+      setDeleteDialogOpen(false);
+      alert('Failed to delete selected keys');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function openRename(rowIndex: number) {
+    const currentKey = tableData[rowIndex]?.key || '';
+    setRenameDialog({ open: true, rowIndex, value: currentKey });
+  }
+
+  async function confirmRename() {
+    if (renameDialog.rowIndex == null) return;
+    const row = tableData[renameDialog.rowIndex];
+    const newKey = renameDialog.value.trim();
+    if (!newKey || newKey === row.key) {
+      setRenameDialog({ open: false, rowIndex: null, value: '' });
+      return;
+    }
+    // Validate: no duplicates
+    if (tableData.some((r, i) => i !== renameDialog.rowIndex && r.key === newKey)) {
+      alert('A key with that name already exists.');
+      return;
+    }
+    try {
+      setSubmitting(true);
+      await renameTranslationKey(row.key_id, newKey);
+      const next = [...tableData];
+      next[renameDialog.rowIndex] = { ...row, key: newKey };
+      setTableData(next);
+      setRenameDialog({ open: false, rowIndex: null, value: '' });
+    } catch (e) {
+      console.error(e);
+      alert('Failed to rename key');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   const handleBulkExport = () => {
     const selectedData = Array.from(selectedRows).map(idx => tableData[idx]);
@@ -366,6 +430,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages }:
           className={`group transition-all duration-150 ease-out h-14 hover:bg-surface-hover/70 hover:shadow-sm ${
                     isSelected ? 'bg-primary-soft border-l-4 border-l-primary' : ''
                   }`}
+                  
                 >
                   {row.getVisibleCells().map((cell, cellIdx) => {
                     const isCheckbox = cellIdx === 0;
@@ -379,7 +444,24 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages }:
                         }`}
                         style={isKeyColumn ? { left: '4rem' } : undefined}
                       >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        {isKeyColumn ? (
+                          <div className="group/ky flex items-center justify-between gap-2 min-w-[180px] max-w-[240px]">
+                            <div className="font-medium text-foreground tracking-tight text-sm break-words">
+                              {row.getValue('key') as string}
+                            </div>
+                            <div className="opacity-0 group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
+                              <button
+                                className="text-xs text-muted hover:text-foreground"
+                                onClick={() => openRename(actualRowIndex)}
+                                aria-label="Rename key"
+                              >
+                                Rename
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          flexRender(cell.column.columnDef.cell, cell.getContext())
+                        )}
                       </td>
                     );
                   })}
@@ -492,6 +574,47 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages }:
         </div>
       )}
       </div>
+
+      {/* Delete Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete selected keys</DialogTitle>
+            <DialogDescription>
+              This will permanently delete {selectedRows.size} key(s) and their translations. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={submitting}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmBulkDelete} disabled={submitting}>
+              {submitting ? 'Deleting…' : 'Delete'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialog.open} onOpenChange={(open) => setRenameDialog(d => ({ ...d, open }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename key</DialogTitle>
+            <DialogDescription>Provide a new, unique key.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <input
+              value={renameDialog.value}
+              onChange={e => setRenameDialog(d => ({ ...d, value: e.target.value }))}
+              className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRenameDialog({ open: false, rowIndex: null, value: '' })} disabled={submitting}>Cancel</Button>
+              <Button onClick={confirmRename} disabled={submitting || !renameDialog.value.trim()}>
+                {submitting ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
