@@ -274,3 +274,132 @@ export async function updateLanguageName(
     .eq('id', langRow.id);
   if (error) throw error;
 }
+
+/**
+ * Bulk: ensure language codes exist and return code -> id map
+ */
+export async function getLanguageCodeToIdMap(projectId: string): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from('project_languages')
+    .select('id, language_code')
+    .eq('project_id', projectId)
+    .eq('is_active', true);
+  if (error) throw error;
+  const map: Record<string, string> = {};
+  (data || []).forEach((row: any) => {
+    map[row.language_code] = row.id;
+  });
+  return map;
+}
+
+/**
+ * Bulk upsert translation keys by string value
+ */
+export async function bulkUpsertKeys(projectId: string, keys: string[]): Promise<void> {
+  const uniqueKeys = Array.from(new Set(keys)).filter(k => !!k);
+  if (uniqueKeys.length === 0) return;
+  const rows = uniqueKeys.map(k => ({ project_id: projectId, key: k }));
+  const { error } = await supabase
+    .from('translation_keys')
+    .upsert(rows, { onConflict: 'project_id,key' });
+  if (error) throw error;
+}
+
+/**
+ * Return key string -> id map for a project
+ */
+export async function getKeyToIdMap(projectId: string): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from('translation_keys')
+    .select('id, key')
+    .eq('project_id', projectId);
+  if (error) throw error;
+  const map: Record<string, string> = {};
+  (data || []).forEach((row: any) => { map[row.key] = row.id; });
+  return map;
+}
+
+/**
+ * Bulk upsert translations for provided key/lang/value triples
+ */
+export async function bulkUpsertTranslations(
+  projectId: string,
+  entries: Array<{ key: string; langCode: string; value: string | null }>,
+  chunkSize: number = 1000
+): Promise<number> {
+  if (entries.length === 0) return 0;
+
+  // Ensure keys exist
+  await bulkUpsertKeys(projectId, entries.map(e => e.key));
+
+  // Resolve ids
+  const [keyToId, codeToId] = await Promise.all([
+    getKeyToIdMap(projectId),
+    getLanguageCodeToIdMap(projectId),
+  ]);
+
+  const rows = entries
+    .filter(e => keyToId[e.key] && codeToId[e.langCode])
+    .map(e => ({
+      key_id: keyToId[e.key],
+      project_language_id: codeToId[e.langCode],
+      value: e.value,
+    }));
+
+  let total = 0;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const { error } = await supabase
+      .from('translations')
+      .upsert(chunk, { onConflict: 'key_id,project_language_id' });
+    if (error) throw error;
+    total += chunk.length;
+  }
+  return total;
+}
+
+/**
+ * Delete translations for a language where keys are NOT in keepKeys
+ * Useful for destructive "delete missing" imports.
+ */
+export async function deleteMissingTranslations(
+  projectId: string,
+  langCode: string,
+  keepKeys: string[],
+  chunkSize: number = 1000
+): Promise<number> {
+  // Resolve language id
+  const { data: langRow, error: langErr } = await supabase
+    .from('project_languages')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('language_code', (langCode || '').toLowerCase())
+    .single();
+  if (langErr) throw langErr;
+  if (!langRow) return 0;
+
+  // Get key ids to keep
+  const { data: keyRows, error: keyErr } = await supabase
+    .from('translation_keys')
+    .select('id, key')
+    .eq('project_id', projectId);
+  if (keyErr) throw keyErr;
+  const keepSet = new Set(keepKeys);
+  const toDeleteKeyIds = (keyRows || [])
+    .filter((k: any) => !keepSet.has(k.key))
+    .map((k: any) => k.id);
+  if (toDeleteKeyIds.length === 0) return 0;
+
+  let total = 0;
+  for (let i = 0; i < toDeleteKeyIds.length; i += chunkSize) {
+    const ids = toDeleteKeyIds.slice(i, i + chunkSize);
+    const { error } = await supabase
+      .from('translations')
+      .delete()
+      .eq('project_language_id', langRow.id)
+      .in('key_id', ids);
+    if (error) throw error;
+    total += ids.length;
+  }
+  return total;
+}

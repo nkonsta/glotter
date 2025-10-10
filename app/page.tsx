@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName } from '@/lib/translations';
+import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import TranslationGrid from '@/components/TranslationGrid';
 import { Button } from '@/components/ui/Button';
@@ -17,12 +17,14 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/Dialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { DropdownMenuCheckboxItem } from '@/components/ui/DropdownMenu';
+import { ImportMode, toKeyToValueMap } from '@/lib/importExport';
 import { cn } from '@/lib/cn';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SidePanel } from '@/components/ui/SidePanel';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
+import { Upload, Download } from 'lucide-react';
 
 interface Project {
   id: string;
@@ -70,6 +72,18 @@ export default function Home() {
   const [isDeleteProjectOpen, setIsDeleteProjectOpen] = useState(false);
   const [confirmProjectName, setConfirmProjectName] = useState('');
   const [deletingProject, setDeletingProject] = useState(false);
+
+  // Import dialog state
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importTargetLang, setImportTargetLang] = useState<string>('');
+  const [importMode, setImportMode] = useState<ImportMode>('merge');
+  const [deleteMissing, setDeleteMissing] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importPreview, setImportPreview] = useState<{ add: number; update: number; unchanged: number; total: number } | null>(null);
+  const [importPayload, setImportPayload] = useState<Record<string, string | null> | null>(null);
+  const [importFileName, setImportFileName] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [clearBeforeImport, setClearBeforeImport] = useState(false);
 
   const sortedLanguages = useMemo(() => {
     return [...languages].sort((a, b) => {
@@ -408,12 +422,27 @@ export default function Home() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="md"
+                    className="gap-2"
+                    onClick={() => {
+                      setImportTargetLang(sortedLanguages[0]?.code || 'en');
+                      setImportMode('merge');
+                      setDeleteMissing(false);
+                      setClearBeforeImport(false);
+                      setImportPreview(null);
+                      setImportPayload(null);
+                      setIsImportOpen(true);
+                    }}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Import
+                  </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="md" className="gap-2">
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
+                        <Download className="h-4 w-4" />
                         Export
                       </Button>
                     </DropdownMenuTrigger>
@@ -699,6 +728,14 @@ export default function Home() {
                     setInitialLangs('en');
                     setLiveMessage(`Created project ${project.name}`);
                     toast({ title: 'Project created', description: `Project ${project.name} created`, variant: 'success' });
+                    // Offer import for the first language
+                    const primaryLang = (langs[0]?.code || 'en').toLowerCase();
+                    setImportTargetLang(primaryLang);
+                    setImportMode('merge');
+                    setDeleteMissing(false);
+                    setImportPreview(null);
+                    setImportPayload(null);
+                    setIsImportOpen(true);
                   } catch (e) {
                     console.error(e);
                     toast({ title: 'Error', description: 'Failed to create project', variant: 'error' });
@@ -718,7 +755,15 @@ export default function Home() {
       </Dialog>
 
       {/* Manage Languages Dialog */}
-      <Dialog open={isManageLangsOpen} onOpenChange={setIsManageLangsOpen}>
+      <Dialog
+        open={isManageLangsOpen}
+        onOpenChange={(open) => {
+          setIsManageLangsOpen(open);
+          // Reset transient edit state when dialog is closed or reopened
+          setEditingLang(null);
+          setEditingLangName('');
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Manage languages</DialogTitle>
@@ -755,6 +800,13 @@ export default function Home() {
                     setNewLangCode('');
                     setNewLangName('');
                     toast({ title: 'Language added', description: `Added ${code.toUpperCase()}`, variant: 'success' });
+                    // Prompt to import for the new language
+                    setImportTargetLang(code.toLowerCase());
+                    setImportMode('merge');
+                    setDeleteMissing(false);
+                    setImportPreview(null);
+                    setImportPayload(null);
+                    setIsImportOpen(true);
                   } catch (e) {
                     console.error(e);
                     toast({ title: 'Error', description: 'Failed to add language', variant: 'error' });
@@ -919,6 +971,180 @@ export default function Home() {
                 disabled={deletingProject || confirmProjectName.trim() !== (projects.find(p => p.id === selectedProject)?.name || '')}
               >
                 {deletingProject ? 'Deleting…' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Import JSON Dialog */}
+      <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import JSON</DialogTitle>
+            <DialogDescription>Upload a JSON file to populate values. Default scope is a single language.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Target language</label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between">
+                      <span className="truncate">
+                        {importTargetLang.toUpperCase()} {sortedLanguages.find(l => l.code === importTargetLang)?.name ? `(${sortedLanguages.find(l => l.code === importTargetLang)?.name})` : ''}
+                      </span>
+                      <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-64 overflow-auto w-64">
+                    {sortedLanguages.map(l => (
+                      <DropdownMenuItem key={l.code} onClick={() => setImportTargetLang(l.code)}>
+                        <span className="font-medium">{l.code.toUpperCase()}</span>
+                        {l.name && <span className="text-xs text-muted ml-2">({l.name})</span>}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Mode</label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between">
+                      <span className="truncate">
+                        {importMode === 'add-only' ? 'Add-only' : importMode === 'merge' ? 'Merge (default)' : 'Overwrite'}
+                      </span>
+                      <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onClick={() => setImportMode('add-only')}>Add-only</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setImportMode('merge')}>Merge (default)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setImportMode('overwrite')}>Overwrite</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">JSON file</label>
+              <div className="flex items-center gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json"
+                  className="sr-only"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setImportFileName(file.name);
+                    try {
+                      const text = await file.text();
+                      const json = JSON.parse(text);
+                      // Support {key:value} (language-specific) and {key:{lang:value}} / [{key,lang,value}] later
+                      let map: Record<string, string | null> = {};
+                      if (json && typeof json === 'object' && !Array.isArray(json)) {
+                        map = toKeyToValueMap(json as Record<string, unknown>);
+                      } else if (Array.isArray(json)) {
+                        const tmp: Record<string, unknown> = {};
+                        for (const rec of json as Array<any>) {
+                          if (rec && typeof rec.key === 'string' && (rec.lang == null || String(rec.lang).toLowerCase() === importTargetLang)) {
+                            tmp[rec.key] = rec.value;
+                          }
+                        }
+                        map = toKeyToValueMap(tmp);
+                      }
+
+                      // Build current map for preview
+                      const current: Record<string, string | null> = {};
+                      translations.forEach(row => {
+                        current[row.key] = row.translations[importTargetLang]?.value ?? null;
+                      });
+
+                      const add = Object.keys(map).filter(k => current[k] == null).length;
+                      const update = Object.keys(map).filter(k => current[k] != null && current[k] !== map[k]).length;
+                      const unchanged = Object.keys(map).length - add - update;
+                      setImportPreview({ add, update, unchanged, total: Object.keys(map).length });
+                      setImportPayload(map);
+                    } catch (err) {
+                      console.error(err);
+                      toast({ title: 'Invalid JSON', description: 'Please upload a valid JSON file.', variant: 'error' });
+                    }
+                  }}
+                />
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()} aria-label="Choose JSON file">
+                  Choose JSON file
+                </Button>
+                <span className="text-sm text-muted truncate max-w-[50%]">{importFileName || 'No file selected'}</span>
+              </div>
+            </div>
+
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={deleteMissing} onChange={(e) => setDeleteMissing(e.target.checked)} />
+              Also delete keys missing from file (destructive)
+            </label>
+
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={clearBeforeImport} onChange={(e) => setClearBeforeImport(e.target.checked)} />
+              Clear existing values for target language before import (keeps keys)
+            </label>
+
+            {importPreview && (
+              <div className="text-sm text-muted">
+                <div>Total: <span className="text-foreground font-medium">{importPreview.total}</span></div>
+                <div>Add: <span className="text-foreground font-medium">{importPreview.add}</span> · Update: <span className="text-foreground font-medium">{importPreview.update}</span> · Unchanged: <span className="text-foreground font-medium">{importPreview.unchanged}</span></div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => setIsImportOpen(false)} disabled={importBusy}>Cancel</Button>
+              <Button
+                onClick={async () => {
+                  if (!selectedProject || !importPayload) return;
+                  try {
+                    setImportBusy(true);
+                    if (clearBeforeImport) {
+                      // Remove all translations for the target language, keep keys and language
+                      await deleteMissingTranslations(selectedProject, importTargetLang, []);
+                    }
+                    // Build entries and honor import mode
+                    const baseEntries = Object.entries(importPayload).map(([key, value]) => ({ key, langCode: importTargetLang, value }));
+
+                    // Current values for the target language
+                    const currentMap: Record<string, string | null> = {};
+                    translations.forEach(row => {
+                      currentMap[row.key] = row.translations[importTargetLang]?.value ?? null;
+                    });
+
+                    let entries = baseEntries;
+                    if (importMode === 'add-only') {
+                      entries = baseEntries.filter(e => currentMap[e.key] == null);
+                    } else if (importMode === 'merge') {
+                      entries = baseEntries.filter(e => currentMap[e.key] !== (e.value ?? null));
+                    } else {
+                      // overwrite → keep all
+                    }
+                    await bulkUpsertTranslations(selectedProject, entries);
+                    if (deleteMissing) {
+                      await deleteMissingTranslations(selectedProject, importTargetLang, Object.keys(importPayload));
+                    }
+                    await loadProjectData(selectedProject);
+                    setIsImportOpen(false);
+                    toast({ title: 'Import complete', description: 'Translations imported successfully.', variant: 'success' });
+                  } catch (e) {
+                    console.error(e);
+                    toast({ title: 'Import failed', description: 'Failed to import translations.', variant: 'error' });
+                  } finally {
+                    setImportBusy(false);
+                  }
+                }}
+                disabled={importBusy || !importPayload}
+              >
+                {importBusy ? 'Importing…' : 'Apply import'}
               </Button>
             </div>
           </div>
