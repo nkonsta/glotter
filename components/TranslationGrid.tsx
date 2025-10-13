@@ -13,7 +13,7 @@ import { updateTranslation, createTranslation, renameTranslationKey, deleteTrans
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/Tooltip';
-import { Languages } from 'lucide-react';
+import { Languages, WandSparkles } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
 interface TranslationGridProps {
@@ -36,6 +36,12 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
   const [renameDialog, setRenameDialog] = useState<{ open: boolean; rowIndex: number | null; value: string }>({ open: false, rowIndex: null, value: '' });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Per-row AI dialog state
+  const [aiDialog, setAiDialog] = useState<{ open: boolean; rowIndex: number | null }>(() => ({ open: false, rowIndex: null }));
+  const [aiSourceLang, setAiSourceLang] = useState<string>('en');
+  const [aiTargets, setAiTargets] = useState<Set<string>>(new Set());
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPreview, setAiPreview] = useState<Record<string, string> | null>(null); // lang -> suggestion
 
   const totalPages = Math.ceil(tableData.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
@@ -458,7 +464,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                             <div className="font-medium text-foreground tracking-tight text-sm break-words">
                               {row.getValue('key') as string}
                             </div>
-                            <div className="opacity-0 group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
+                            <div className="opacity-100 transition-opacity flex items-center gap-2">
                               <button
                                 className="text-muted hover:text-foreground transition-colors"
                                 onClick={() => openRename(actualRowIndex)}
@@ -467,6 +473,27 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                 </svg>
+                              </button>
+                              <button
+                                className="text-muted hover:text-foreground transition-colors"
+                                onClick={() => {
+                                  const langs = languages;
+                                  const defaultSrc = langs.find(l => l.code.toLowerCase() === 'en')?.code || (langs[0]?.code || 'en');
+                                  setAiSourceLang(defaultSrc);
+                                  const targets = new Set<string>();
+                                  langs.forEach(l => {
+                                    if (l.code === defaultSrc) return;
+                                    const hasVal = tableData[actualRowIndex]?.translations[l.code]?.value;
+                                    if (!hasVal) targets.add(l.code);
+                                  });
+                                  setAiTargets(targets);
+                                  setAiPreview(null);
+                                  setAiDialog({ open: true, rowIndex: actualRowIndex });
+                                }}
+                                aria-label="AI translate this row"
+                                title="AI translate this row"
+                              >
+                                <WandSparkles className="w-4 h-4" />
                               </button>
                             </div>
                           </div>
@@ -626,6 +653,170 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
           </div>
         </DialogContent>
       </Dialog>
+
+  {/* Per-row AI Translate Dialog */}
+  <Dialog open={aiDialog.open} onOpenChange={(open) => setAiDialog(d => ({ ...d, open }))}>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>AI translate this key</DialogTitle>
+        <DialogDescription>Generate suggestions for the selected row only.</DialogDescription>
+      </DialogHeader>
+      {aiDialog.rowIndex != null && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Source language</label>
+              <select
+                value={aiSourceLang}
+                onChange={(e) => setAiSourceLang(e.target.value)}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm"
+              >
+                {languages.map(l => (
+                  <option key={l.code} value={l.code}>{l.code.toUpperCase()} {l.name ? `(${l.name})` : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Target languages</label>
+              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-auto border border-border rounded-md p-2">
+                {languages.map(l => {
+                  const checked = aiTargets.has(l.code);
+                  const disabled = l.code === aiSourceLang;
+                  return (
+                    <label key={l.code} className={`inline-flex items-center gap-2 text-sm ${disabled ? 'opacity-50' : ''}`}>
+                      <input
+                        type="checkbox"
+                        disabled={disabled}
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = new Set(aiTargets);
+                          if (e.target.checked) next.add(l.code); else next.delete(l.code);
+                          setAiTargets(next);
+                        }}
+                      />
+                      <span className="font-medium">{l.code.toUpperCase()}</span>
+                      {l.name && <span className="text-xs text-muted">({l.name})</span>}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {!aiPreview ? (
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => setAiDialog({ open: false, rowIndex: null })} disabled={aiBusy}>Cancel</Button>
+              <Button
+                onClick={async () => {
+                  const idx = aiDialog.rowIndex!;
+                  const row = tableData[idx];
+                  const targets = Array.from(aiTargets);
+                  if (targets.length === 0) {
+                    toast({ title: 'Select targets', description: 'Choose at least one target language.', variant: 'error' });
+                    return;
+                  }
+                  const sourceText = row.translations[aiSourceLang]?.value || '';
+                  if (!sourceText) {
+                    toast({ title: 'No source text', description: 'This row has no source text in the selected language.', variant: 'error' });
+                    return;
+                  }
+                  try {
+                    setAiBusy(true);
+                    const res = await fetch('/api/ai-translate', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        projectId: 'n/a',
+                        sourceLanguage: aiSourceLang,
+                        targetLanguages: targets,
+                        entries: [{ key: row.key, text: sourceText }],
+                        options: { preservePlaceholders: true, dryRun: true },
+                      }),
+                    });
+                    if (!res.ok) throw new Error(await res.text());
+                    const json = await res.json();
+                    const perLang = json.translations as Record<string, Array<{ key: string; aiText: string; error?: string }>>;
+                    const out: Record<string, string> = {};
+                    for (const [lang, arr] of Object.entries(perLang)) {
+                      const item = arr.find(i => i.key === row.key);
+                      if (item && !item.error && item.aiText) out[lang] = item.aiText;
+                    }
+                    setAiPreview(out);
+                  } catch (e) {
+                    console.error(e);
+                    toast({ title: 'AI preview failed', description: 'Could not generate suggestion.', variant: 'error' });
+                  } finally {
+                    setAiBusy(false);
+                  }
+                }}
+                disabled={aiBusy || aiTargets.size === 0}
+              >
+                {aiBusy ? 'Generating…' : 'Generate'}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="border border-border rounded-md p-3 text-sm">
+                {Object.keys(aiPreview).length === 0 ? (
+                  <div className="text-muted">No valid suggestions.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {Object.entries(aiPreview).map(([lang, text]) => (
+                      <div key={lang} className="flex items-start gap-3">
+                        <div className="w-16 text-xs font-medium text-muted-foreground">{lang.toUpperCase()}</div>
+                        <div className="flex-1">{text}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setAiPreview(null)} disabled={aiBusy}>Back</Button>
+                <Button
+                  onClick={async () => {
+                    if (!aiPreview || aiDialog.rowIndex == null) return;
+                    try {
+                      setSubmitting(true);
+                      const idx = aiDialog.rowIndex;
+                      const entries = Object.entries(aiPreview).map(([lang, val]) => ({ key: tableData[idx].key, langCode: lang, value: val }));
+                      // Reuse bulk upsert via fetch to app layer
+                      // Directly call update/create to minimize changes:
+                      for (const [lang, val] of Object.entries(aiPreview)) {
+                        const t = tableData[idx].translations[lang];
+                        if (t.translation_id) {
+                          await updateTranslation(t.translation_id, val);
+                        } else {
+                          await createTranslation(tableData[idx].key_id, t.language_id, val);
+                        }
+                      }
+                      // Local update
+                      const newData = [...tableData];
+                      const row = newData[idx];
+                      for (const [lang, val] of Object.entries(aiPreview)) {
+                        row.translations[lang] = { ...row.translations[lang], value: val } as any;
+                      }
+                      setTableData(newData);
+                      setAiDialog({ open: false, rowIndex: null });
+                      setAiPreview(null);
+                      toast({ title: 'Applied', description: 'AI suggestions applied to this row.', variant: 'success' });
+                    } catch (e) {
+                      console.error(e);
+                      toast({ title: 'Apply failed', description: 'Failed to write AI suggestions.', variant: 'error' });
+                    } finally {
+                      setSubmitting(false);
+                    }
+                  }}
+                  disabled={aiBusy}
+                >
+                  Apply
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </DialogContent>
+  </Dialog>
     </div>
   );
 }

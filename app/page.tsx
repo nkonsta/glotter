@@ -24,7 +24,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SidePanel } from '@/components/ui/SidePanel';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
-import { Upload, Download } from 'lucide-react';
+import { Upload, Download, WandSparkles } from 'lucide-react';
 
 interface Project {
   id: string;
@@ -90,6 +90,16 @@ export default function Home() {
   const [exportSelected, setExportSelected] = useState<Set<string>>(new Set());
   const [exportFallbackLang, setExportFallbackLang] = useState<string>('en');
   const [fallbackMissingCount, setFallbackMissingCount] = useState<number>(0);
+  // AI translate dialog
+  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [aiSourceLang, setAiSourceLang] = useState<string>('en');
+  const [aiTargets, setAiTargets] = useState<Set<string>>(new Set());
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiGlossaryCsv, setAiGlossaryCsv] = useState('');
+  const [aiPreview, setAiPreview] = useState<Record<string, Array<{ key: string; text: string; aiText: string; error?: string }>> | null>(null);
+  // Bulk AI chunking state
+  const [aiChunking, setAiChunking] = useState<{ running: boolean; processed: number; total: number } | null>(null);
+  const aiCancelRef = useRef<{ cancelled: boolean; controller: AbortController | null }>({ cancelled: false, controller: null });
 
   const sortedLanguages = useMemo(() => {
     return [...languages].sort((a, b) => {
@@ -486,6 +496,31 @@ export default function Home() {
                     size="md"
                     className="gap-2"
                     onClick={() => {
+                      if (sortedLanguages.length === 0) return;
+                      const selectedSource = sortedLanguages.find(l => l.code.toLowerCase() === 'en')?.code || sortedLanguages[0].code;
+                      setAiSourceLang(selectedSource);
+                      // default targets: visible languages except source with any missing values
+                      const defaults = new Set<string>();
+                      const visible = Array.from(visibleLanguages);
+                      visible.forEach(code => {
+                        if (code === selectedSource) return;
+                        const hasMissing = translations.some(row => !row.translations[code]?.value);
+                        if (hasMissing) defaults.add(code);
+                      });
+                      setAiTargets(defaults);
+                      setAiGlossaryCsv('');
+                      setAiPreview(null);
+                      setIsAiOpen(true);
+                    }}
+                  >
+                    <WandSparkles className="h-4 w-4" />
+                    AI fill missing…
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    className="gap-2"
+                    onClick={() => {
                       // Open Export Languages dialog directly
                       setExportSelected(new Set(languages.map(l => l.code))); // preselect all
                       const defaultFallback = languages.find(l => l.code.toLowerCase() === 'en')?.code || languages[0]?.code || '';
@@ -783,6 +818,272 @@ export default function Home() {
                 ) : 'Create'}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* AI Translate Dialog */}
+      <Dialog
+        open={isAiOpen}
+        onOpenChange={(open) => {
+          setIsAiOpen(open);
+          if (!open) {
+            setAiPreview(null);
+            setAiGlossaryCsv('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>AI fill missing translations</DialogTitle>
+            <DialogDescription>Generate suggestions for missing cells while preserving placeholders.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Source language</label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between">
+                      <span className="truncate">
+                        {aiSourceLang.toUpperCase()} {sortedLanguages.find(l => l.code === aiSourceLang)?.name ? `(${sortedLanguages.find(l => l.code === aiSourceLang)?.name})` : ''}
+                      </span>
+                      <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-64 overflow-auto w-64">
+                    {sortedLanguages.map(l => (
+                      <DropdownMenuItem key={l.code} onClick={() => setAiSourceLang(l.code)}>
+                        <span className="font-medium">{l.code.toUpperCase()}</span>
+                        {l.name && <span className="text-xs text-muted ml-2">({l.name})</span>}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Target languages</label>
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-auto border border-border rounded-md p-2">
+                  {sortedLanguages.map(l => {
+                    const checked = aiTargets.has(l.code);
+                    const disabled = l.code === aiSourceLang;
+                    return (
+                      <label key={l.code} className={`inline-flex items-center gap-2 text-sm ${disabled ? 'opacity-50' : ''}`}>
+                        <input
+                          type="checkbox"
+                          disabled={disabled}
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = new Set(aiTargets);
+                            if (e.target.checked) next.add(l.code); else next.delete(l.code);
+                            setAiTargets(next);
+                          }}
+                        />
+                        <span className="font-medium">{l.code.toUpperCase()}</span>
+                        {l.name && <span className="text-xs text-muted">({l.name})</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Glossary (CSV: source,target)</label>
+              <textarea
+                value={aiGlossaryCsv}
+                onChange={(e) => setAiGlossaryCsv(e.target.value)}
+                placeholder="Sign in,Se connecter\nHome,Accueil"
+                className="w-full p-2 text-sm border border-border rounded-md bg-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                rows={3}
+              />
+              <p className="text-xs text-muted mt-1">Authoritative mapping; placeholders are always preserved.</p>
+            </div>
+
+            {aiChunking?.running && (
+              <div className="flex items-center justify-between text-sm border border-border rounded-md p-2 bg-surface">
+                <div>
+                  Processing {aiChunking.processed} / {aiChunking.total}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-40 h-2 bg-surface-hover rounded">
+                    <div className="h-2 bg-primary rounded" style={{ width: `${Math.round((aiChunking.processed / Math.max(1, aiChunking.total)) * 100)}%` }} />
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => { aiCancelRef.current.cancelled = true; aiCancelRef.current.controller?.abort(); }}>Cancel</Button>
+                </div>
+              </div>
+            )}
+
+            {!aiPreview ? (
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" onClick={() => setIsAiOpen(false)} disabled={aiBusy}>Cancel</Button>
+                <Button
+                  onClick={async () => {
+                    if (!selectedProject) return;
+                    const targets = Array.from(aiTargets);
+                    if (targets.length === 0) {
+                      toast({ title: 'Select targets', description: 'Choose at least one target language.', variant: 'error' });
+                      return;
+                    }
+                    try {
+                      setAiBusy(true);
+                      // Collect entries with a source value and at least one selected target missing
+                      const adjusted = filteredTranslations
+                        .filter(row => {
+                          const src = row.translations[aiSourceLang]?.value || '';
+                          if (!src) return false;
+                          return targets.some(lang => !(row.translations[lang]?.value));
+                        })
+                        .map(row => ({ key: row.key, text: row.translations[aiSourceLang]!.value as string }));
+                      if (adjusted.length === 0) {
+                        toast({ title: 'Nothing to translate', description: 'No rows have source text with missing targets.', variant: 'info' });
+                        setAiBusy(false);
+                        return;
+                      }
+                      // Per-run cap and chunked processing
+                      const cap = Number(process.env.NEXT_PUBLIC_AI_PREVIEW_CAP || 500);
+                      const chunkSize = Number(process.env.NEXT_PUBLIC_AI_CHUNK_SIZE || 50);
+                      const limited = adjusted.slice(0, cap);
+                      if (adjusted.length > cap) {
+                        toast({ title: 'Preview limited', description: `Showing first ${cap} rows. Apply in chunks.`, variant: 'info' });
+                      }
+                      aiCancelRef.current.cancelled = false;
+                      setAiChunking({ running: true, processed: 0, total: limited.length });
+                      const aggregate: Record<string, Array<{ key: string; text: string; aiText: string; error?: string }>> = {};
+                      const glossary = aiGlossaryCsv
+                        .split('\n').map(l => l.trim()).filter(Boolean)
+                        .map(line => { const [source, target] = line.split(','); return { source: (source || '').trim(), target: (target || '').trim() }; })
+                        .filter(t => t.source && t.target);
+                      for (let i = 0; i < limited.length; i += chunkSize) {
+                        if (aiCancelRef.current.cancelled) break;
+                        const chunk = limited.slice(i, i + chunkSize);
+                        const controller = new AbortController();
+                        aiCancelRef.current.controller = controller;
+                        const res = await fetch('/api/ai-translate', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            projectId: selectedProject,
+                            sourceLanguage: aiSourceLang,
+                            targetLanguages: targets,
+                            entries: chunk,
+                            options: { glossary, preservePlaceholders: true, dryRun: true },
+                          }),
+                          signal: controller.signal,
+                        });
+                        if (!res.ok) throw new Error(await res.text());
+                        const json = await res.json();
+                        for (const [lang, list] of Object.entries(json.translations || {})) {
+                          if (!aggregate[lang]) aggregate[lang] = [];
+                          aggregate[lang].push(...(list as any));
+                        }
+                        setAiChunking({ running: true, processed: Math.min(i + chunk.length, limited.length), total: limited.length });
+                        aiCancelRef.current.controller = null;
+                      }
+                      if (aiCancelRef.current.cancelled) {
+                        toast({ title: 'Cancelled', description: 'Generation cancelled.', variant: 'info' });
+                      }
+                      setAiPreview(aggregate);
+                      setAiChunking(null);
+                    } catch (e) {
+                      console.error(e);
+                      toast({ title: 'AI preview failed', description: 'Could not generate suggestions.', variant: 'error' });
+                    } finally {
+                      setAiBusy(false);
+                    }
+                  }}
+                  disabled={aiBusy || aiTargets.size === 0}
+                >
+                  {aiBusy ? 'Generating…' : 'Generate preview'}
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="max-h-80 overflow-auto border border-border rounded-md">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-surface-hover">
+                        <th className="text-left px-3 py-2">Key</th>
+                        <th className="text-left px-3 py-2">Source</th>
+                        {Object.keys(aiPreview).map(lang => (
+                          <th key={lang} className="text-left px-3 py-2">{lang.toUpperCase()}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTranslations.map(row => {
+                        const source = row.translations[aiSourceLang]?.value || '';
+                        const anyMissing = Object.keys(aiPreview!).some(lang => !(row.translations[lang]?.value));
+                        if (!anyMissing) return null;
+                        return (
+                          <tr key={row.key} className="border-t border-border">
+                            <td className="px-3 py-2 font-medium">{row.key}</td>
+                            <td className="px-3 py-2 text-muted">{source || '—'}</td>
+                            {Object.entries(aiPreview!).map(([lang, items]) => {
+                              const found = items.find(i => i.key === row.key);
+                              const err = found?.error;
+                              const suggested = found?.aiText || '';
+                              const already = row.translations[lang]?.value || '';
+                              return (
+                                <td key={lang} className="px-3 py-2">
+                                  {already ? (
+                                    <span className="text-muted">(existing)</span>
+                                  ) : err ? (
+                                    <span className="text-danger text-xs">{err}</span>
+                                  ) : (
+                                    <span>{suggested || '—'}</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setAiPreview(null)} disabled={aiBusy}>Back</Button>
+                  <Button
+                    onClick={async () => {
+                      if (!selectedProject || !aiPreview) return;
+                      try {
+                        setAiBusy(true);
+                        // Build entries from preview only for missing cells
+                        const entries: Array<{ key: string; langCode: string; value: string | null }> = [];
+                        filteredTranslations.forEach(row => {
+                          for (const [lang, items] of Object.entries(aiPreview)) {
+                            const already = row.translations[lang]?.value || '';
+                            if (already) continue;
+                            const found = items.find(i => i.key === row.key);
+                            if (found && !found.error && found.aiText) {
+                              entries.push({ key: row.key, langCode: lang, value: found.aiText });
+                            }
+                          }
+                        });
+                        if (entries.length === 0) {
+                          toast({ title: 'Nothing to apply', description: 'No valid suggestions to write.', variant: 'info' });
+                          return;
+                        }
+                        await bulkUpsertTranslations(selectedProject, entries);
+                        await loadProjectData(selectedProject);
+                        setIsAiOpen(false);
+                        setAiPreview(null);
+                        toast({ title: 'Applied', description: `Wrote ${entries.length} suggestions.`, variant: 'success' });
+                      } catch (e) {
+                        console.error(e);
+                        toast({ title: 'Apply failed', description: 'Failed to write AI suggestions.', variant: 'error' });
+                      } finally {
+                        setAiBusy(false);
+                      }
+                    }}
+                    disabled={aiBusy}
+                  >
+                    {aiBusy ? 'Applying…' : 'Apply suggestions'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
