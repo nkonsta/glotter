@@ -668,35 +668,37 @@ export default function Home() {
                       
                     </div>
                     <DropdownMenuSeparator />
-                    {sortedLanguages
-                      .filter(lang => {
-                        const q = columnsSearch.trim().toLowerCase();
-                        if (!q) return true;
-                        const code = lang.code.toLowerCase();
-                        const name = (lang.name || '').toLowerCase();
-                        return code.includes(q) || name.includes(q);
-                      })
-                      .map(lang => (
-                        <DropdownMenuCheckboxItem
-                          key={lang.code}
-                          checked={visibleLanguages.has(lang.code)}
-                          onCheckedChange={(checked) => {
-                            const newVisible = new Set(visibleLanguages);
-                            if (!checked) {
-                              newVisible.delete(lang.code);
-                            } else {
-                              newVisible.add(lang.code);
-                            }
-                            setVisibleLanguages(newVisible);
-                            persistVisibleLanguages(newVisible);
-                          }}
-                        >
-                          <span className="text-sm font-medium">{lang.code.toUpperCase()}</span>
-                          {lang.name && (
-                            <span className="text-xs text-muted ml-2">{lang.name}</span>
-                          )}
-                        </DropdownMenuCheckboxItem>
-                      ))}
+                    <div className="max-h-80 overflow-auto">
+                      {sortedLanguages
+                        .filter(lang => {
+                          const q = columnsSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          const code = lang.code.toLowerCase();
+                          const name = (lang.name || '').toLowerCase();
+                          return code.includes(q) || name.includes(q);
+                        })
+                        .map(lang => (
+                          <DropdownMenuCheckboxItem
+                            key={lang.code}
+                            checked={visibleLanguages.has(lang.code)}
+                            onCheckedChange={(checked) => {
+                              const newVisible = new Set(visibleLanguages);
+                              if (!checked) {
+                                newVisible.delete(lang.code);
+                              } else {
+                                newVisible.add(lang.code);
+                              }
+                              setVisibleLanguages(newVisible);
+                              persistVisibleLanguages(newVisible);
+                            }}
+                          >
+                            <span className="text-sm font-medium">{lang.code.toUpperCase()}</span>
+                            {lang.name && (
+                              <span className="text-xs text-muted ml-2">{lang.name}</span>
+                            )}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                    </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
                   )}
@@ -1153,7 +1155,7 @@ export default function Home() {
               </Button>
             </div>
 
-            <div className="border border-border rounded-lg divide-y divide-border">
+            <div className="border border-border rounded-lg divide-y divide-border max-h-80 overflow-auto">
               {sortedLanguages.length === 0 && (
                 <div className="p-3 text-sm text-muted">No languages yet.</div>
               )}
