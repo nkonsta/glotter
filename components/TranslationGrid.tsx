@@ -546,7 +546,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                       onClick={() => setShowPageSizeMenu(false)}
                     />
                         <div className="absolute bottom-full mb-1 right-0 w-24 bg-surface-elevated rounded-lg shadow-card border border-border py-1 z-40">
-                      {[25, 50, 100, 200].map((size) => (
+                      {[25, 50, 100, 200, 500].map((size) => (
                         <button
                           key={size}
                           onClick={() => {
