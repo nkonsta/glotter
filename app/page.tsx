@@ -136,18 +136,21 @@ export default function Home() {
     }
 
     // Apply missing/complete filter
+    const activeCodes = (visibleLanguages && visibleLanguages.size > 0)
+      ? Array.from(visibleLanguages)
+      : languages.map(l => l.code);
     if (filterMode === 'missing') {
       filtered = filtered.filter(row =>
-        Object.values(row.translations).some(t => !t.value)
+        activeCodes.some(code => !(row.translations[code]?.value))
       );
     } else if (filterMode === 'complete') {
       filtered = filtered.filter(row =>
-        Object.values(row.translations).every(t => t.value)
+        activeCodes.every(code => !!(row.translations[code]?.value))
       );
     }
 
     setFilteredTranslations(filtered);
-  }, [translations, searchQuery, filterMode]);
+  }, [translations, searchQuery, filterMode, visibleLanguages, languages]);
 
   useEffect(() => {
     applyFilters();
