@@ -338,8 +338,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="bg-surface-elevated/95 backdrop-blur border-b border-border/60 sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:h-14">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2">
               <Image src="/chinese.svg" alt="Glotter" width={28} height={28} className="h-7 w-7" priority />
               <h1 className="text-lg font-semibold tracking-tight">Glotter</h1>
@@ -401,17 +401,17 @@ export default function Home() {
               </>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <ThemeToggle />
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         <div aria-live="polite" aria-atomic="true" className="sr-only">{liveMessage}</div>
         {loading ? (
           <div className="space-y-4">
-            <div className="bg-surface-elevated px-6 py-6 rounded-xl shadow-card border border-border">
+            <div className="bg-surface-elevated px-4 sm:px-6 py-6 rounded-xl shadow-card border border-border">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-6">
                   <Skeleton className="h-6 w-16" />
@@ -455,9 +455,9 @@ export default function Home() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="bg-surface-elevated px-6 py-6 rounded-xl shadow-card border border-border">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-6">
+            <div className="bg-surface-elevated px-4 sm:px-6 py-6 rounded-xl shadow-card border border-border">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+                <div className="flex flex-wrap items-center gap-4">
                   <div className="text-sm font-medium text-muted">
                     <span className="text-lg font-bold">{translations.length}</span>
                     <span className="ml-1.5 text-muted">keys</span>
@@ -477,11 +477,11 @@ export default function Home() {
                     </>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                   <Button
                     variant="outline"
                     size="md"
-                    className="gap-2"
+                    className="gap-2 w-full sm:w-auto justify-center"
                     onClick={() => {
                       resetImportFileState();
                       setImportTargetLang(sortedLanguages[0]?.code || 'en');
@@ -497,7 +497,7 @@ export default function Home() {
                   <Button
                     variant="outline"
                     size="md"
-                    className="gap-2"
+                    className="gap-2 w-full sm:w-auto justify-center"
                     onClick={() => {
                       if (sortedLanguages.length === 0) return;
                       const selectedSource = sortedLanguages.find(l => l.code.toLowerCase() === 'en')?.code || sortedLanguages[0].code;
@@ -522,7 +522,7 @@ export default function Home() {
                   <Button
                     variant="outline"
                     size="md"
-                    className="gap-2"
+                    className="gap-2 w-full sm:w-auto justify-center"
                     onClick={() => {
                       // Open Export Languages dialog directly
                       setExportSelected(new Set(languages.map(l => l.code))); // preselect all
@@ -534,8 +534,8 @@ export default function Home() {
                     }}
                   >
                     <Download className="h-4 w-4" />
-                        Export
-                      </Button>
+                    Export
+                  </Button>
                   <Dialog open={isAddKeyOpen} onOpenChange={setIsAddKeyOpen}>
                     <DialogTrigger asChild>
                       <Button>+ Add New Key</Button>
@@ -597,8 +597,8 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
-                <div className="flex-1 relative">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                <div className="relative w-full lg:flex-1">
                   <input
                     type="search"
                     aria-label="Search translations"
@@ -612,7 +612,7 @@ export default function Home() {
                   </svg>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row lg:items-center gap-2 w-full lg:w-auto">
                   <SegmentedControl
                     ariaLabel="Filter translations"
                     value={filterMode}
@@ -622,88 +622,88 @@ export default function Home() {
                       { value: 'missing', label: 'Missing' },
                       { value: 'complete', label: 'Complete' },
                     ]}
+                    className="w-full sm:w-auto"
                   />
 
                   {sortedLanguages.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="ml-2 gap-2">
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                      </svg>
-                      Columns
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-72">
-                    <DropdownMenuLabel className="text-muted-foreground">Languages</DropdownMenuLabel>
-                    <div className="px-2 py-1.5">
-                      <input
-                        value={columnsSearch}
-                        onChange={(e) => setColumnsSearch(e.target.value)}
-                        placeholder="Search languages..."
-                        className="w-full px-2 py-1 border border-border rounded bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      />
-                    </div>
-                    <DropdownMenuSeparator />
-                    <div className="px-2 pb-1 grid grid-cols-2 gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const all = new Set(languages.map(l => l.code));
-                          setVisibleLanguages(all);
-                          persistVisibleLanguages(all);
-                        }}
-                      >
-                        Select all
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const none = new Set<string>();
-                          setVisibleLanguages(none);
-                          persistVisibleLanguages(none);
-                        }}
-                      >
-                        Select none
-                      </Button>
-                      
-                    </div>
-                    <DropdownMenuSeparator />
-                    <div className="max-h-80 overflow-auto">
-                      {sortedLanguages
-                        .filter(lang => {
-                          const q = columnsSearch.trim().toLowerCase();
-                          if (!q) return true;
-                          const code = lang.code.toLowerCase();
-                          const name = (lang.name || '').toLowerCase();
-                          return code.includes(q) || name.includes(q);
-                        })
-                        .map(lang => (
-                          <DropdownMenuCheckboxItem
-                            key={lang.code}
-                            checked={visibleLanguages.has(lang.code)}
-                            onCheckedChange={(checked) => {
-                              const newVisible = new Set(visibleLanguages);
-                              if (!checked) {
-                                newVisible.delete(lang.code);
-                              } else {
-                                newVisible.add(lang.code);
-                              }
-                              setVisibleLanguages(newVisible);
-                              persistVisibleLanguages(newVisible);
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="gap-2 w-full sm:w-auto justify-center">
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                          </svg>
+                          Columns
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-72">
+                        <DropdownMenuLabel className="text-muted-foreground">Languages</DropdownMenuLabel>
+                        <div className="px-2 py-1.5">
+                          <input
+                            value={columnsSearch}
+                            onChange={(e) => setColumnsSearch(e.target.value)}
+                            placeholder="Search languages..."
+                            className="w-full px-2 py-1 border border-border rounded bg-surface text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <DropdownMenuSeparator />
+                        <div className="px-2 pb-1 grid grid-cols-2 gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const all = new Set(languages.map(l => l.code));
+                              setVisibleLanguages(all);
+                              persistVisibleLanguages(all);
                             }}
                           >
-                            <span className="text-sm font-medium">{lang.code.toUpperCase()}</span>
-                            {lang.name && (
-                              <span className="text-xs text-muted ml-2">{lang.name}</span>
-                            )}
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                            Select all
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const none = new Set<string>();
+                              setVisibleLanguages(none);
+                              persistVisibleLanguages(none);
+                            }}
+                          >
+                            Select none
+                          </Button>
+                        </div>
+                        <DropdownMenuSeparator />
+                        <div className="max-h-80 overflow-auto">
+                          {sortedLanguages
+                            .filter(lang => {
+                              const q = columnsSearch.trim().toLowerCase();
+                              if (!q) return true;
+                              const code = lang.code.toLowerCase();
+                              const name = (lang.name || '').toLowerCase();
+                              return code.includes(q) || name.includes(q);
+                            })
+                            .map(lang => (
+                              <DropdownMenuCheckboxItem
+                                key={lang.code}
+                                checked={visibleLanguages.has(lang.code)}
+                                onCheckedChange={(checked) => {
+                                  const newVisible = new Set(visibleLanguages);
+                                  if (!checked) {
+                                    newVisible.delete(lang.code);
+                                  } else {
+                                    newVisible.add(lang.code);
+                                  }
+                                  setVisibleLanguages(newVisible);
+                                  persistVisibleLanguages(newVisible);
+                                }}
+                              >
+                                <span className="text-sm font-medium">{lang.code.toUpperCase()}</span>
+                                {lang.name && (
+                                  <span className="text-xs text-muted ml-2">{lang.name}</span>
+                                )}
+                              </DropdownMenuCheckboxItem>
+                            ))}
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
               </div>

@@ -44,10 +44,13 @@ export function SegmentedControl({ value, onValueChange, options, ariaLabel, cla
       ref={containerRef}
       role="radiogroup"
       aria-label={ariaLabel}
-      className={cn('inline-flex items-center gap-1 rounded-lg border border-border bg-surface p-1', className)}
+      className={cn(
+        'flex flex-wrap items-center gap-1 rounded-lg border border-border bg-surface p-1 md:inline-flex md:flex-nowrap',
+        className
+      )}
       onKeyDown={handleKeyDown}
     >
-      {options.map((opt, idx) => {
+      {options.map((opt) => {
         const checked = opt.value === value;
         return (
           <button
@@ -56,7 +59,7 @@ export function SegmentedControl({ value, onValueChange, options, ariaLabel, cla
             aria-checked={checked}
             tabIndex={checked ? 0 : -1}
             className={cn(
-              'px-3 py-1 rounded-md text-sm font-medium transition-colors duration-150 border',
+              'flex-1 min-w-[88px] px-3 py-1 rounded-md text-sm font-medium transition-colors duration-150 border sm:flex-none sm:min-w-0',
               checked
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-transparent text-muted hover:bg-surface-hover'
@@ -72,5 +75,3 @@ export function SegmentedControl({ value, onValueChange, options, ariaLabel, cla
 }
 
 SegmentedControl.displayName = 'SegmentedControl';
-
-
