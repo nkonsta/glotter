@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations } from '@/lib/translations';
+import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations, getProjectMemberRole, type ProjectRole } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
+import ManageProjectMembersDialog from '@/components/admin/ManageProjectMembersDialog';
 import TranslationGrid from '@/components/TranslationGrid';
 import { Button } from '@/components/ui/Button';
 import {
@@ -27,6 +28,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Upload, Download, WandSparkles } from 'lucide-react';
 import AuthScreen from '@/components/auth/AuthScreen';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { supabase } from '@/lib/supabase';
 
 interface Project {
   id: string;
@@ -40,7 +42,7 @@ interface Language {
 
 export default function Home() {
   const { toast } = useToast();
-  const { user, loading: authLoading, signOut: signOutUser } = useAuth();
+  const { user, session, loading: authLoading, signOut: signOutUser } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [languages, setLanguages] = useState<Language[]>([]);
@@ -75,6 +77,9 @@ export default function Home() {
   const [isDeleteProjectOpen, setIsDeleteProjectOpen] = useState(false);
   const [confirmProjectName, setConfirmProjectName] = useState('');
   const [deletingProject, setDeletingProject] = useState(false);
+  const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
 
   // Import dialog state
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -115,6 +120,18 @@ export default function Home() {
     });
   }, [languages]);
 
+  const selectedProjectInfo = useMemo(() => {
+    return projects.find(project => project.id === selectedProject) ?? null;
+  }, [projects, selectedProject]);
+
+  const canManageMembers = isPlatformAdmin;
+  const canEditCells = isPlatformAdmin || projectRole === 'owner' || projectRole === 'editor';
+  const canManageLanguages = isPlatformAdmin || projectRole === 'owner';
+  const canDeleteProject = canManageLanguages;
+  const canManageKeys = isPlatformAdmin || projectRole === 'owner';
+  const canRenameKeys = isPlatformAdmin || projectRole === 'owner' || projectRole === 'editor';
+  const canAddKey = isPlatformAdmin || projectRole === 'owner';
+  const hasProjectActions = canManageMembers || canManageLanguages || canDeleteProject;
   const applyFilters = useCallback(() => {
     let filtered = translations;
 
@@ -151,6 +168,45 @@ export default function Home() {
   }, [applyFilters]);
 
   useEffect(() => {
+    let isMounted = true;
+
+    if (authLoading) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    if (!user) {
+      setIsPlatformAdmin(false);
+      setIsManageMembersOpen(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    supabase
+      .rpc('is_platform_admin')
+      .then(({ data, error }) => {
+        if (!isMounted) return;
+        if (error) {
+          console.error('Failed to determine platform admin status', error);
+          setIsPlatformAdmin(false);
+          return;
+        }
+        setIsPlatformAdmin(Boolean(data));
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        console.error('Failed to determine platform admin status', error);
+        setIsPlatformAdmin(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, authLoading]);
+
+  useEffect(() => {
     // Initialize visible languages from localStorage (per-project), or default to 3 (EN first)
     if (!selectedProject) return;
     try {
@@ -171,6 +227,30 @@ export default function Home() {
       setVisibleLanguages(new Set(sortedLanguages.slice(0, 2).map(l => l.code)));
     }
   }, [sortedLanguages, languages, selectedProject]);
+
+  useEffect(() => {
+    if (!canManageLanguages) {
+      setIsManageLangsOpen(false);
+    }
+  }, [canManageLanguages]);
+
+  useEffect(() => {
+    if (!canDeleteProject) {
+      setIsDeleteProjectOpen(false);
+    }
+  }, [canDeleteProject]);
+
+  useEffect(() => {
+    if (!canAddKey) {
+      setIsAddKeyOpen(false);
+    }
+  }, [canAddKey]);
+
+  useEffect(() => {
+    if (!canManageMembers) {
+      setIsManageMembersOpen(false);
+    }
+  }, [canManageMembers]);
 
   function persistVisibleLanguages(next: Set<string>) {
     if (!selectedProject) return;
@@ -201,16 +281,19 @@ export default function Home() {
   const loadProjectData = useCallback(async (projectId: string) => {
     try {
       setLoading(true);
-      const [langs, trans] = await Promise.all([
+      const [langs, trans, role] = await Promise.all([
         getProjectLanguages(projectId),
-        getTranslationsGrid(projectId)
+        getTranslationsGrid(projectId),
+        getProjectMemberRole(projectId)
       ]);
 
       setLanguages(langs.map(l => ({ code: l.language_code, name: l.language_name })));
       setTranslations(trans);
+      setProjectRole(role);
       setLoading(false);
     } catch (err) {
       setError('Failed to load project data');
+      setProjectRole(null);
       setLoading(false);
       console.error(err);
     }
@@ -225,6 +308,7 @@ export default function Home() {
       setTranslations([]);
       setFilteredTranslations([]);
       setSelectedProject('');
+      setProjectRole(null);
       setVisibleLanguages(new Set());
       setLoading(false);
       return;
@@ -237,8 +321,15 @@ export default function Home() {
 
   useEffect(() => {
     if (authLoading || !user || !selectedProject) return;
+    setProjectRole(null);
     loadProjectData(selectedProject);
   }, [authLoading, user, selectedProject, loadProjectData]);
+
+  useEffect(() => {
+    if (!selectedProject) {
+      setProjectRole(null);
+    }
+  }, [selectedProject]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -417,7 +508,7 @@ export default function Home() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                {selectedProject && (
+                {selectedProject && hasProjectActions && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="px-2 py-1" aria-label="Project actions">
@@ -429,8 +520,18 @@ export default function Home() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-48" align="start">
-                      <DropdownMenuItem onClick={() => setIsManageLangsOpen(true)}>Manage languages…</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setIsDeleteProjectOpen(true)} className="text-danger focus:text-danger">Delete project…</DropdownMenuItem>
+                      {canManageMembers && (
+                        <>
+                          <DropdownMenuItem onClick={() => setIsManageMembersOpen(true)}>Manage members…</DropdownMenuItem>
+                          {(canManageLanguages || canDeleteProject) && <DropdownMenuSeparator />}
+                        </>
+                      )}
+                      {canManageLanguages && (
+                        <DropdownMenuItem onClick={() => setIsManageLangsOpen(true)}>Manage languages…</DropdownMenuItem>
+                      )}
+                      {canDeleteProject && (
+                        <DropdownMenuItem onClick={() => setIsDeleteProjectOpen(true)} className="text-danger focus:text-danger">Delete project…</DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
@@ -535,7 +636,9 @@ export default function Home() {
                     variant="outline"
                     size="md"
                     className="gap-2 w-full sm:w-auto justify-center"
+                    disabled={!canEditCells}
                     onClick={() => {
+                      if (!canEditCells) return;
                       resetImportFileState();
                       setImportTargetLang(sortedLanguages[0]?.code || 'en');
                       setImportMode('merge');
@@ -551,8 +654,9 @@ export default function Home() {
                     variant="outline"
                     size="md"
                     className="gap-2 w-full sm:w-auto justify-center"
+                    disabled={!canEditCells}
                     onClick={() => {
-                      if (sortedLanguages.length === 0) return;
+                      if (!canEditCells || sortedLanguages.length === 0) return;
                       const selectedSource = sortedLanguages.find(l => l.code.toLowerCase() === 'en')?.code || sortedLanguages[0].code;
                       setAiSourceLang(selectedSource);
                       // default targets: visible languages except source with any missing values
@@ -589,64 +693,66 @@ export default function Home() {
                     <Download className="h-4 w-4" />
                     Export
                   </Button>
-                  <Dialog open={isAddKeyOpen} onOpenChange={setIsAddKeyOpen}>
-                    <DialogTrigger asChild>
-                      <Button>+ Add New Key</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Add New Translation Key</DialogTitle>
-                        <DialogDescription>Provide a unique key name. You can add values per-language later.</DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-muted-foreground mb-1">Key</label>
-                          <input
-                            value={newKeyName}
-                            onChange={(e) => setNewKeyName(e.target.value)}
-                            placeholder="e.g. common.save"
-                            className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
-                          />
+                  {canAddKey && (
+                    <Dialog open={isAddKeyOpen} onOpenChange={setIsAddKeyOpen}>
+                      <DialogTrigger asChild>
+                        <Button>+ Add New Key</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add New Translation Key</DialogTitle>
+                          <DialogDescription>Provide a unique key name. You can add values per-language later.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-sm font-medium text-muted-foreground mb-1">Key</label>
+                            <input
+                              value={newKeyName}
+                              onChange={(e) => setNewKeyName(e.target.value)}
+                              placeholder="e.g. common.save"
+                              className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2 pt-2">
+                            <Button variant="outline" onClick={() => setIsAddKeyOpen(false)}>Cancel</Button>
+                            <Button
+                              onClick={async () => {
+                                if (!newKeyName.trim() || !selectedProject) return;
+                                try {
+                                  setCreatingKey(true);
+                                  await createTranslationKey(selectedProject, newKeyName.trim());
+                                  const successMsg = `Created key ${newKeyName}`;
+                                  setLiveMessage(successMsg);
+                                  toast({ title: 'Key created', description: successMsg, variant: 'success' });
+                                  setNewKeyName('');
+                                  setIsAddKeyOpen(false);
+                                  // Reload data to include new key
+                                  await loadProjectData(selectedProject);
+                                } catch (e) {
+                                  console.error(e);
+                                  const msg = 'Failed to create key';
+                                  setLiveMessage(msg);
+                                  toast({ title: 'Error', description: msg, variant: 'error' });
+                                } finally {
+                                  setCreatingKey(false);
+                                }
+                              }}
+                              disabled={!newKeyName.trim() || creatingKey}
+                            >
+                              {creatingKey ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <Spinner size={14} />
+                                  Creating…
+                                </span>
+                              ) : (
+                                'Create Key'
+                              )}
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex justify-end gap-2 pt-2">
-                          <Button variant="outline" onClick={() => setIsAddKeyOpen(false)}>Cancel</Button>
-                          <Button
-                            onClick={async () => {
-                              if (!newKeyName.trim() || !selectedProject) return;
-                              try {
-                                setCreatingKey(true);
-                                const { id } = await createTranslationKey(selectedProject, newKeyName.trim());
-                                const successMsg = `Created key ${newKeyName}`;
-                                setLiveMessage(successMsg);
-                                toast({ title: 'Key created', description: successMsg, variant: 'success' });
-                                setNewKeyName('');
-                                setIsAddKeyOpen(false);
-                                // Reload data to include new key
-                                await loadProjectData(selectedProject);
-                              } catch (e) {
-                                console.error(e);
-                                const msg = 'Failed to create key';
-                                setLiveMessage(msg);
-                                toast({ title: 'Error', description: msg, variant: 'error' });
-                              } finally {
-                                setCreatingKey(false);
-                              }
-                            }}
-                            disabled={!newKeyName.trim() || creatingKey}
-                          >
-                            {creatingKey ? (
-                              <span className="inline-flex items-center gap-2">
-                                <Spinner size={14} />
-                                Creating…
-                              </span>
-                            ) : (
-                              'Create Key'
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                      </DialogContent>
+                    </Dialog>
+                  )}
                 </div>
               </div>
 
@@ -765,8 +871,11 @@ export default function Home() {
             <TranslationGrid
               data={filteredTranslations}
               languages={sortedLanguages.filter(l => visibleLanguages.has(l.code))}
-            onOpenAllLanguages={openAllLanguagesPanel}
-            onDeletedKeys={handleDeletedKeys}
+              onOpenAllLanguages={openAllLanguagesPanel}
+              onDeletedKeys={handleDeletedKeys}
+              allowCellEditing={canEditCells}
+              allowRowSelection={canManageKeys}
+              allowRename={canRenameKeys}
             />
 
           <SidePanel
@@ -803,6 +912,15 @@ export default function Home() {
           </div>
         )}
       </main>
+      {canManageMembers && (
+        <ManageProjectMembersDialog
+          open={isManageMembersOpen}
+          onOpenChange={setIsManageMembersOpen}
+          projectId={selectedProject || null}
+          projectName={selectedProjectInfo?.name}
+          accessToken={session?.access_token ?? null}
+        />
+      )}
       {/* Create Project Dialog */}
       <Dialog open={isCreateProjectOpen} onOpenChange={setIsCreateProjectOpen}>
         <DialogContent>
@@ -1147,20 +1265,21 @@ export default function Home() {
       </Dialog>
 
       {/* Manage Languages Dialog */}
-      <Dialog
-        open={isManageLangsOpen}
-        onOpenChange={(open) => {
-          setIsManageLangsOpen(open);
-          // Reset transient edit state when dialog is closed or reopened
-          setEditingLang(null);
-          setEditingLangName('');
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Manage languages</DialogTitle>
-            <DialogDescription>Add or remove languages for this project.</DialogDescription>
-          </DialogHeader>
+      {canManageLanguages && (
+        <Dialog
+          open={isManageLangsOpen}
+          onOpenChange={(open) => {
+            setIsManageLangsOpen(open);
+            // Reset transient edit state when dialog is closed or reopened
+            setEditingLang(null);
+            setEditingLangName('');
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Manage languages</DialogTitle>
+              <DialogDescription>Add or remove languages for this project.</DialogDescription>
+            </DialogHeader>
           <div className="space-y-3">
             <div className="flex items-end gap-2">
               <div className="flex-1">
@@ -1315,16 +1434,20 @@ export default function Home() {
               ))}
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Delete Project Dialog */}
-      <Dialog open={isDeleteProjectOpen} onOpenChange={setIsDeleteProjectOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete project</DialogTitle>
-            <DialogDescription>This will delete the project and all keys and translations. Type the project name to confirm.</DialogDescription>
-          </DialogHeader>
+      {canDeleteProject && (
+        <Dialog open={isDeleteProjectOpen} onOpenChange={setIsDeleteProjectOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete project</DialogTitle>
+              <DialogDescription>
+                This will delete the project and all keys and translations. Only project owners can perform this action. Type the project name to confirm.
+              </DialogDescription>
+            </DialogHeader>
           <div className="space-y-3">
             <input
               value={confirmProjectName}
@@ -1346,15 +1469,17 @@ export default function Home() {
                     const refreshed = await getProjects();
                     setProjects(refreshed);
                     setSelectedProject('');
+                    setProjectRole(null);
                     setLanguages([]);
                     setTranslations([]);
                     setFilteredTranslations([]);
                     setIsDeleteProjectOpen(false);
                     setConfirmProjectName('');
                     toast({ title: 'Project deleted', description: `${proj.name} deleted`, variant: 'success' });
-                  } catch (e) {
-                    console.error(e);
-                    toast({ title: 'Error', description: 'Failed to delete project', variant: 'error' });
+                  } catch (err) {
+                    console.error(err);
+                    const message = err instanceof Error ? err.message : 'Failed to delete project';
+                    toast({ title: 'Error', description: message, variant: 'error' });
                   } finally {
                     setDeletingProject(false);
                   }
@@ -1365,8 +1490,9 @@ export default function Home() {
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Export Languages Dialog */}
       <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>

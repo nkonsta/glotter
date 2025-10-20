@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import type { KeyboardEvent } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -21,9 +22,12 @@ interface TranslationGridProps {
   languages: Array<{ code: string; name: string | null }>;
   onOpenAllLanguages?: (rowIndex: number) => void;
   onDeletedKeys?: (keyIds: string[]) => void;
+  allowCellEditing: boolean;
+  allowRowSelection: boolean;
+  allowRename: boolean;
 }
 
-export default function TranslationGrid({ data, languages, onOpenAllLanguages, onDeletedKeys }: TranslationGridProps) {
+export default function TranslationGrid({ data, languages, onOpenAllLanguages, onDeletedKeys, allowCellEditing, allowRowSelection, allowRename }: TranslationGridProps) {
   const { toast } = useToast();
   const [tableData, setTableData] = useState(data);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
@@ -43,6 +47,27 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
   const [aiBusy, setAiBusy] = useState(false);
   const [aiPreview, setAiPreview] = useState<Record<string, string> | null>(null); // lang -> suggestion
 
+  useEffect(() => {
+    if (!allowRowSelection) {
+      setSelectedRows(new Set());
+      setDeleteDialogOpen(false);
+    }
+  }, [allowRowSelection]);
+
+  useEffect(() => {
+    if (!allowRename) {
+      setRenameDialog({ open: false, rowIndex: null, value: '' });
+    }
+  }, [allowRename]);
+
+  useEffect(() => {
+    if (!allowCellEditing) {
+      setEditingCell(null);
+      setAiDialog({ open: false, rowIndex: null });
+      setAiPreview(null);
+    }
+  }, [allowCellEditing]);
+
   const totalPages = Math.ceil(tableData.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
@@ -57,32 +82,39 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
 
   // Keyboard navigation logic removed
 
-  const toggleRowSelection = (rowIndex: number) => {
-    const newSelection = new Set(selectedRows);
-    if (newSelection.has(rowIndex)) {
-      newSelection.delete(rowIndex);
-    } else {
-      newSelection.add(rowIndex);
-    }
-    setSelectedRows(newSelection);
-  };
+  const toggleRowSelection = useCallback((rowIndex: number) => {
+    if (!allowRowSelection) return;
+    setSelectedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(rowIndex)) {
+        next.delete(rowIndex);
+      } else {
+        next.add(rowIndex);
+      }
+      return next;
+    });
+  }, [allowRowSelection]);
 
   // Range selection removed
 
-  const toggleAllRows = () => {
-    if (selectedRows.size === paginatedData.length) {
-      setSelectedRows(new Set());
-    } else {
+  const toggleAllRows = useCallback(() => {
+    if (!allowRowSelection) return;
+    setSelectedRows(prev => {
+      if (prev.size === paginatedData.length) {
+        return new Set();
+      }
       const allIndices = paginatedData.map((_, idx) => startIndex + idx);
-      setSelectedRows(new Set(allIndices));
-    }
-  };
+      return new Set(allIndices);
+    });
+  }, [allowRowSelection, paginatedData, startIndex]);
 
   const handleCellClick = useCallback((actualRowIndex: number, langCode: string) => {
+    if (!allowCellEditing) return;
     setEditingCell({ row: actualRowIndex, col: langCode });
-  }, []);
+  }, [allowCellEditing]);
 
   const handleSave = useCallback(async (actualRowIndex: number, langCode: string, newValue: string) => {
+    if (!allowCellEditing) return;
     const row = tableData[actualRowIndex];
     const translation = row.translations[langCode];
 
@@ -113,9 +145,9 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
       console.error('Failed to save translation:', error);
       toast({ title: 'Save failed', description: 'Failed to save translation. Please try again.', variant: 'error' });
     }
-  }, [tableData]);
+  }, [allowCellEditing, tableData, toast]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent, rowIndex: number, langCode: string, currentValue: string) => {
+  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>, rowIndex: number, langCode: string, currentValue: string) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSave(rowIndex, langCode, currentValue);
@@ -126,141 +158,194 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
 
   const columnHelper = createColumnHelper<TranslationRow>();
 
-  const columns = useMemo(() => [
-    // Checkbox column
-    columnHelper.display({
-      id: 'select',
-      header: () => (
-        <input
-          type="checkbox"
-          checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
-          onChange={toggleAllRows}
-          aria-label="Select all rows"
-          className="w-4 h-4 text-primary border border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-surface"
-        />
-      ),
-      cell: info => {
-        const displayRowIndex = info.row.index;
-        const actualRowIndex = startIndex + displayRowIndex;
-        return (
-          <input
-            type="checkbox"
-            checked={selectedRows.has(actualRowIndex)}
-            onChange={() => toggleRowSelection(actualRowIndex)}
-            aria-label={`Select row ${tableData[actualRowIndex]?.key}`}
-            className="w-4 h-4 text-primary border border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-surface"
-          />
-        );
-      },
-    }),
-    // Key column
-    columnHelper.accessor('key', {
-      header: 'Key',
-      cell: info => {
-        const displayRowIndex = info.row.index;
-        const actualRowIndex = startIndex + displayRowIndex;
-        return (
-          <div className="group/ky flex items-center justify-between gap-2 min-w-[140px] sm:min-w-[180px] max-w-[220px] sm:max-w-[240px]">
-            <div className="font-medium text-foreground tracking-tight text-sm break-words">
-              {info.getValue()}
-            </div>
-            {onOpenAllLanguages && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => onOpenAllLanguages(actualRowIndex)}
-                      className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity text-muted hover:text-foreground"
-                      aria-label="Edit all languages for this key"
-                    >
-                      <Languages className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Edit all languages</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </div>
-        );
-      },
-    }),
-    ...languages.map(lang =>
-      columnHelper.accessor(
-        row => row.translations[lang.code]?.value,
-        {
-          id: lang.code,
+  const openRename = useCallback((rowIndex: number) => {
+    if (!allowRename) return;
+    const currentKey = tableData[rowIndex]?.key || '';
+    setRenameDialog({ open: true, rowIndex, value: currentKey });
+  }, [allowRename, tableData]);
+
+  const columns = useMemo(() => {
+    const colDefs: ColumnDef<TranslationRow, unknown>[] = [];
+
+    if (allowRowSelection) {
+      colDefs.push(
+        columnHelper.display({
+          id: 'select',
           header: () => (
-            <div className="text-center">
-            <div className="font-medium text-muted-foreground text-xs uppercase tracking-wide">{lang.code}</div>
-            {lang.name && <div className="text-xs font-normal text-muted mt-0.5">{lang.name}</div>}
-            </div>
+            <input
+              type="checkbox"
+              checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
+              onChange={toggleAllRows}
+              aria-label="Select all rows"
+              className="w-4 h-4 text-primary border border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-surface"
+            />
           ),
           cell: info => {
             const displayRowIndex = info.row.index;
             const actualRowIndex = startIndex + displayRowIndex;
-            const langCode = lang.code;
-            const isEditing = editingCell?.row === actualRowIndex && editingCell?.col === langCode;
-            const value = info.getValue();
-            // Focus management removed
-
             return (
-              <div className="min-w-[180px] sm:min-w-[240px] max-w-[260px] sm:max-w-[400px]">
-                {isEditing ? (
-                  <CellEditor
-                    key={`${actualRowIndex}-${langCode}`}
-                    initialValue={value || ''}
-                    onCancel={() => setEditingCell(null)}
-                    onCommit={(v) => handleSave(actualRowIndex, langCode, v)}
-                    onKeyDown={(e, v) => handleKeyDown(e, actualRowIndex, langCode, v)}
-                  />
-                ) : (
-                  <div
-                    onClick={() => {
-                      handleCellClick(actualRowIndex, langCode);
-                    }}
-                    className={`relative p-2 text-sm cursor-pointer rounded-md transition-all duration-150 ease-out min-h-[44px] ${
-                      !value
-                        ? 'hover:bg-[hsl(var(--warning)/0.14)]'
-                        : 'hover:bg-surface-hover'
-                    }`}
-                  >
-                    {!value ? (
-                      <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
-                        Missing
-                      </span>
-                    ) : (
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="text-foreground flex-1">{value}</div>
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 flex-shrink-0">
-                          <svg className="w-4 h-4 text-muted hover:text-foreground transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                          </svg>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <input
+                type="checkbox"
+                checked={selectedRows.has(actualRowIndex)}
+                onChange={() => toggleRowSelection(actualRowIndex)}
+                aria-label={`Select row ${tableData[actualRowIndex]?.key}`}
+                className="w-4 h-4 text-primary border border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-surface"
+              />
             );
           },
-        }
-      )
-    ),
-  ], [
-    languages,
-    startIndex,
-    selectedRows,
-    paginatedData.length,
+        })
+      );
+    }
+
+    colDefs.push(
+      columnHelper.accessor('key', {
+        id: 'key',
+        header: 'Key',
+        cell: info => {
+          const displayRowIndex = info.row.index;
+          const actualRowIndex = startIndex + displayRowIndex;
+          return (
+            <div className="group/ky flex items-center justify-between gap-2 min-w-[140px] sm:min-w-[180px] max-w-[220px] sm:max-w-[240px]">
+              <div className="font-medium text-foreground tracking-tight text-sm break-words">
+                {info.getValue()}
+              </div>
+              {(allowRename || onOpenAllLanguages) && (
+                <div className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
+                  {allowRename && (
+                    <button
+                      className="text-muted hover:text-foreground transition-colors"
+                      onClick={() => openRename(actualRowIndex)}
+                      aria-label="Rename key"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  )}
+                  {onOpenAllLanguages && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => onOpenAllLanguages(actualRowIndex)}
+                            className="text-muted hover:text-foreground transition-colors"
+                            aria-label="Edit all languages for this key"
+                          >
+                            <Languages className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>Edit all languages</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        },
+      })
+    );
+
+    languages.forEach(lang => {
+      colDefs.push(
+        columnHelper.accessor(
+          row => row.translations[lang.code]?.value,
+          {
+            id: lang.code,
+            header: () => (
+              <div className="text-center">
+                <div className="font-medium text-muted-foreground text-xs uppercase tracking-wide">{lang.code}</div>
+                {lang.name && <div className="text-xs font-normal text-muted mt-0.5">{lang.name}</div>}
+              </div>
+            ),
+            cell: info => {
+              const displayRowIndex = info.row.index;
+              const actualRowIndex = startIndex + displayRowIndex;
+              const langCode = lang.code;
+              const isEditing = editingCell?.row === actualRowIndex && editingCell?.col === langCode;
+              const value = info.getValue();
+
+              if (!allowCellEditing) {
+                const isMissing = !value;
+                return (
+                  <div className="min-w-[180px] sm:min-w-[240px] max-w-[260px] sm:max-w-[400px]">
+                    <div
+                      className={`relative p-2 text-sm rounded-md min-h-[44px] ${
+                        isMissing ? 'bg-[hsl(var(--warning)/0.12)] text-warning' : ''
+                      }`}
+                    >
+                      {isMissing ? (
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
+                          Missing
+                        </span>
+                      ) : (
+                        <div className="text-foreground flex-1">{value}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="min-w-[180px] sm:min-w-[240px] max-w-[260px] sm:max-w-[400px]">
+                  {isEditing ? (
+                    <CellEditor
+                      key={`${actualRowIndex}-${langCode}`}
+                      initialValue={value || ''}
+                      onCommit={(v) => handleSave(actualRowIndex, langCode, v)}
+                      onKeyDown={(e, v) => handleKeyDown(e, actualRowIndex, langCode, v)}
+                    />
+                  ) : (
+                    <div
+                      onClick={() => {
+                        handleCellClick(actualRowIndex, langCode);
+                      }}
+                      className={`relative p-2 text-sm cursor-pointer rounded-md transition-all duration-150 ease-out min-h-[44px] ${
+                        !value
+                          ? 'hover:bg-[hsl(var(--warning)/0.14)]'
+                          : 'hover:bg-surface-hover'
+                      }`}
+                    >
+                      {!value ? (
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
+                          Missing
+                        </span>
+                      ) : (
+                        <div className="text-foreground flex-1">{value}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            },
+          }
+        )
+      );
+    });
+
+    return colDefs;
+  }, [
+    allowCellEditing,
+    allowRename,
+    allowRowSelection,
+    columnHelper,
+    editingCell?.col,
+    editingCell?.row,
     handleCellClick,
     handleKeyDown,
     handleSave,
+    languages,
+    onOpenAllLanguages,
+    paginatedData.length,
+    selectedRows,
+    startIndex,
     tableData,
     toggleAllRows,
     toggleRowSelection,
-    editingCell?.row,
-    editingCell?.col,
-    columnHelper,
+    openRename,
   ]);
+
+  const canUseAiRow = allowCellEditing;
 
   const table = useReactTable({
     data: paginatedData,
@@ -268,7 +353,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     getCoreRowModel: getCoreRowModel(),
   });
 
-  function CellEditor({ initialValue, onCommit, onCancel, onKeyDown }: { initialValue: string; onCommit: (v: string) => void; onCancel: () => void; onKeyDown: (e: React.KeyboardEvent, v: string) => void }) {
+  function CellEditor({ initialValue, onCommit, onKeyDown }: { initialValue: string; onCommit: (v: string) => void; onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>, v: string) => void }) {
     const [localValue, setLocalValue] = useState(initialValue);
     return (
       <textarea
@@ -288,10 +373,12 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
   };
 
   const handleBulkDelete = () => {
+    if (!allowRowSelection) return;
     setDeleteDialogOpen(true);
   };
 
   async function confirmBulkDelete() {
+    if (!allowRowSelection) return;
     const keyIds = Array.from(selectedRows).map(idx => tableData[idx]?.key_id).filter(Boolean) as string[];
     try {
       setSubmitting(true);
@@ -312,12 +399,11 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     }
   }
 
-  function openRename(rowIndex: number) {
-    const currentKey = tableData[rowIndex]?.key || '';
-    setRenameDialog({ open: true, rowIndex, value: currentKey });
-  }
-
   async function confirmRename() {
+    if (!allowRename) {
+      setRenameDialog({ open: false, rowIndex: null, value: '' });
+      return;
+    }
     if (renameDialog.rowIndex == null) return;
     const row = tableData[renameDialog.rowIndex];
     const newKey = renameDialog.value.trim();
@@ -347,6 +433,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
   }
 
   const handleBulkExport = () => {
+    if (!allowRowSelection) return;
     const selectedData = Array.from(selectedRows).map(idx => tableData[idx]);
 
     // Create export object with all translations for selected keys
@@ -373,7 +460,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
   return (
     <div className="space-y-4">
       {/* Bulk Actions Toolbar */}
-      {selectedRows.size > 0 && (
+      {allowRowSelection && selectedRows.size > 0 && (
         <div className="bg-primary-soft border border-primary/40 rounded-lg px-4 sm:px-6 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <span className="text-sm font-medium text-foreground">
@@ -415,9 +502,11 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
           <thead className="sticky top-0 z-20 bg-surface-elevated shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
             {table.getHeaderGroups().map(headerGroup => (
               <tr key={headerGroup.id} className="border-b border-border">
-                {headerGroup.headers.map((header, idx) => {
-                  const isCheckbox = idx === 0;
-                  const isKeyColumn = idx === 1;
+                {headerGroup.headers.map((header) => {
+                  const columnId = header.column.id;
+                  const isCheckbox = columnId === 'select';
+                  const isKeyColumn = columnId === 'key';
+                  const leftValue = isKeyColumn && allowRowSelection ? '4rem' : undefined;
                   return (
                     <th
                       key={header.id}
@@ -428,7 +517,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                             ? 'bg-surface-elevated md:sticky md:z-10 md:bg-surface-elevated px-3 sm:px-4'
                             : 'px-3 sm:px-4 bg-surface-elevated'
                       }`}
-                      style={isKeyColumn ? { left: '4rem' } : undefined}
+                      style={leftValue ? { left: leftValue } : undefined}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
@@ -440,7 +529,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
           <tbody className="bg-surface-elevated divide-y divide-border">
             {table.getRowModel().rows.map((row, idx) => {
               const actualRowIndex = startIndex + idx;
-              const isSelected = selectedRows.has(actualRowIndex);
+              const isSelected = allowRowSelection && selectedRows.has(actualRowIndex);
               return (
                 <tr
                   key={row.id}
@@ -449,9 +538,11 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                     isSelected ? 'bg-primary-soft border-l-4 border-l-primary' : ''
                   }`}
                 >
-                  {row.getVisibleCells().map((cell, cellIdx) => {
-                    const isCheckbox = cellIdx === 0;
-                    const isKeyColumn = cellIdx === 1;
+                  {row.getVisibleCells().map((cell) => {
+                    const columnId = cell.column.id;
+                    const isCheckbox = columnId === 'select';
+                    const isKeyColumn = columnId === 'key';
+                    const leftValue = isKeyColumn && allowRowSelection ? '4rem' : undefined;
                     return (
                       <td
                         key={cell.id}
@@ -462,45 +553,67 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                               ? 'md:sticky md:z-10 bg-inherit'
                               : ''
                         }`}
-                        style={isKeyColumn ? { left: '4rem' } : undefined}
+                        style={leftValue ? { left: leftValue } : undefined}
                       >
                         {isKeyColumn ? (
                           <div className="group/ky flex items-center justify-between gap-2 min-w-[140px] sm:min-w-[180px] max-w-[220px] sm:max-w-[240px]">
                             <div className="font-medium text-foreground tracking-tight text-sm break-words">
                               {row.getValue('key') as string}
                             </div>
-                            <div className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
-                              <button
-                                className="text-muted hover:text-foreground transition-colors"
-                                onClick={() => openRename(actualRowIndex)}
-                                aria-label="Rename key"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                </svg>
-                              </button>
-                              <button
-                                className="text-muted hover:text-foreground transition-colors"
-                                onClick={() => {
-                                  const langs = languages;
-                                  const defaultSrc = langs.find(l => l.code.toLowerCase() === 'en')?.code || (langs[0]?.code || 'en');
-                                  setAiSourceLang(defaultSrc);
-                                  const targets = new Set<string>();
-                                  langs.forEach(l => {
-                                    if (l.code === defaultSrc) return;
-                                    const hasVal = tableData[actualRowIndex]?.translations[l.code]?.value;
-                                    if (!hasVal) targets.add(l.code);
-                                  });
-                                  setAiTargets(targets);
-                                  setAiPreview(null);
-                                  setAiDialog({ open: true, rowIndex: actualRowIndex });
-                                }}
-                                aria-label="AI translate this row"
-                                title="AI translate this row"
-                              >
-                                <WandSparkles className="w-4 h-4" />
-                              </button>
-                            </div>
+                            {(allowRename || canUseAiRow || onOpenAllLanguages) && (
+                              <div className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
+                                {allowRename && (
+                                  <button
+                                    className="text-muted hover:text-foreground transition-colors"
+                                    onClick={() => openRename(actualRowIndex)}
+                                    aria-label="Rename key"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                    </svg>
+                                  </button>
+                                )}
+                                {canUseAiRow && (
+                                  <button
+                                    className="text-muted hover:text-foreground transition-colors"
+                                    onClick={() => {
+                                      const langs = languages;
+                                      const defaultSrc = langs.find(l => l.code.toLowerCase() === 'en')?.code || (langs[0]?.code || 'en');
+                                      setAiSourceLang(defaultSrc);
+                                      const targets = new Set<string>();
+                                      langs.forEach(l => {
+                                        if (l.code === defaultSrc) return;
+                                        const hasVal = tableData[actualRowIndex]?.translations[l.code]?.value;
+                                        if (!hasVal) targets.add(l.code);
+                                      });
+                                      setAiTargets(targets);
+                                      setAiPreview(null);
+                                      setAiDialog({ open: true, rowIndex: actualRowIndex });
+                                    }}
+                                    aria-label="AI translate this row"
+                                    title="AI translate this row"
+                                  >
+                                    <WandSparkles className="w-4 h-4" />
+                                  </button>
+                                )}
+                                {onOpenAllLanguages && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          className="text-muted hover:text-foreground transition-colors"
+                                          onClick={() => onOpenAllLanguages(actualRowIndex)}
+                                          aria-label="Edit all languages for this key"
+                                        >
+                                          <Languages className="w-4 h-4" />
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Edit all languages</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           flexRender(cell.column.columnDef.cell, cell.getContext())
@@ -619,94 +732,99 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
       </div>
 
       {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete selected keys</DialogTitle>
-            <DialogDescription>
-              This will permanently delete {selectedRows.size} key(s) and their translations. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={submitting}>Cancel</Button>
-            <Button variant="destructive" onClick={confirmBulkDelete} disabled={submitting}>
-              {submitting ? 'Deleting…' : 'Delete'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Rename Dialog */}
-      <Dialog open={renameDialog.open} onOpenChange={(open) => setRenameDialog(d => ({ ...d, open }))}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rename key</DialogTitle>
-            <DialogDescription>Provide a new, unique key.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <input
-              value={renameDialog.value}
-              onChange={e => setRenameDialog(d => ({ ...d, value: e.target.value }))}
-              className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
-            />
+      {allowRowSelection && (
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete selected keys</DialogTitle>
+              <DialogDescription>
+                This will permanently delete {selectedRows.size} key{selectedRows.size === 1 ? '' : 's'} and their translations. This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setRenameDialog({ open: false, rowIndex: null, value: '' })} disabled={submitting}>Cancel</Button>
-              <Button onClick={confirmRename} disabled={submitting || !renameDialog.value.trim()}>
-                {submitting ? 'Saving…' : 'Save'}
+              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={submitting}>Cancel</Button>
+              <Button variant="destructive" onClick={confirmBulkDelete} disabled={submitting}>
+                {submitting ? 'Deleting…' : 'Delete'}
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      )}
 
-  {/* Per-row AI Translate Dialog */}
-  <Dialog open={aiDialog.open} onOpenChange={(open) => setAiDialog(d => ({ ...d, open }))}>
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>AI translate this key</DialogTitle>
-        <DialogDescription>Generate suggestions for the selected row only.</DialogDescription>
-      </DialogHeader>
-      {aiDialog.rowIndex != null && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Source language</label>
-              <select
-                value={aiSourceLang}
-                onChange={(e) => setAiSourceLang(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm"
-              >
-                {languages.map(l => (
-                  <option key={l.code} value={l.code}>{l.code.toUpperCase()} {l.name ? `(${l.name})` : ''}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Target languages</label>
-              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-auto border border-border rounded-md p-2">
-                {languages.map(l => {
-                  const checked = aiTargets.has(l.code);
-                  const disabled = l.code === aiSourceLang;
-                  return (
-                    <label key={l.code} className={`inline-flex items-center gap-2 text-sm ${disabled ? 'opacity-50' : ''}`}>
-                      <input
-                        type="checkbox"
-                        disabled={disabled}
-                        checked={checked}
-                        onChange={(e) => {
-                          const next = new Set(aiTargets);
-                          if (e.target.checked) next.add(l.code); else next.delete(l.code);
-                          setAiTargets(next);
-                        }}
-                      />
-                      <span className="font-medium">{l.code.toUpperCase()}</span>
-                      {l.name && <span className="text-xs text-muted">({l.name})</span>}
-                    </label>
-                  );
-                })}
+      {/* Rename Dialog */}
+      {allowRename && (
+        <Dialog open={renameDialog.open} onOpenChange={(open) => setRenameDialog(d => ({ ...d, open }))}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Rename key</DialogTitle>
+              <DialogDescription>Provide a new, unique key.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <input
+                value={renameDialog.value}
+                onChange={e => setRenameDialog(d => ({ ...d, value: e.target.value }))}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setRenameDialog({ open: false, rowIndex: null, value: '' })} disabled={submitting}>Cancel</Button>
+                <Button onClick={confirmRename} disabled={submitting || !renameDialog.value.trim()}>
+                  {submitting ? 'Saving…' : 'Save'}
+                </Button>
               </div>
             </div>
-          </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+  {/* Per-row AI Translate Dialog */}
+  {allowCellEditing && (
+    <Dialog open={aiDialog.open} onOpenChange={(open) => setAiDialog(d => ({ ...d, open }))}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>AI translate this key</DialogTitle>
+          <DialogDescription>Generate suggestions for the selected row only.</DialogDescription>
+        </DialogHeader>
+        {aiDialog.rowIndex != null && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Source language</label>
+                <select
+                  value={aiSourceLang}
+                  onChange={(e) => setAiSourceLang(e.target.value)}
+                  className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-sm"
+                >
+                  {languages.map(l => (
+                    <option key={l.code} value={l.code}>{l.code.toUpperCase()} {l.name ? `(${l.name})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Target languages</label>
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-auto border border-border rounded-md p-2">
+                  {languages.map(l => {
+                    const checked = aiTargets.has(l.code);
+                    const disabled = l.code === aiSourceLang;
+                    return (
+                      <label key={l.code} className={`inline-flex items-center gap-2 text-sm ${disabled ? 'opacity-50' : ''}`}>
+                        <input
+                          type="checkbox"
+                          disabled={disabled}
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = new Set(aiTargets);
+                            if (e.target.checked) next.add(l.code); else next.delete(l.code);
+                            setAiTargets(next);
+                          }}
+                        />
+                        <span className="font-medium">{l.code.toUpperCase()}</span>
+                        {l.name && <span className="text-xs text-muted">({l.name})</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
 
           {!aiPreview ? (
             <div className="flex justify-end gap-2 pt-1">
@@ -783,7 +901,6 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                     try {
                       setSubmitting(true);
                       const idx = aiDialog.rowIndex;
-                      const entries = Object.entries(aiPreview).map(([lang, val]) => ({ key: tableData[idx].key, langCode: lang, value: val }));
                       // Reuse bulk upsert via fetch to app layer
                       // Directly call update/create to minimize changes:
                       for (const [lang, val] of Object.entries(aiPreview)) {
@@ -798,7 +915,10 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                       const newData = [...tableData];
                       const row = newData[idx];
                       for (const [lang, val] of Object.entries(aiPreview)) {
-                        row.translations[lang] = { ...row.translations[lang], value: val } as any;
+                        const existing = row.translations[lang];
+                        if (existing) {
+                          row.translations[lang] = { ...existing, value: val };
+                        }
                       }
                       setTableData(newData);
                       setAiDialog({ open: false, rowIndex: null });
@@ -820,8 +940,9 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
           )}
         </div>
       )}
-    </DialogContent>
-  </Dialog>
+      </DialogContent>
+    </Dialog>
+  )}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { supabase, TranslationRow, Project, ProjectLanguage } from './supabase';
 
+export type ProjectRole = 'owner' | 'editor' | 'viewer';
+
 /**
  * Fetch all translations for a project in grid format
  * Returns translation keys as rows with languages as columns
@@ -155,6 +157,27 @@ export async function getProjectLanguages(projectId: string) {
 }
 
 /**
+ * Fetch the current user's role for a project.
+ */
+export async function getProjectMemberRole(projectId: string): Promise<ProjectRole | null> {
+  const { data, error } = await supabase
+    .from('project_members')
+    .select<{ role: ProjectRole }>('role')
+    .eq('project_id', projectId)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === 'PGRST116' || error.code === 'PGRST103' || error.code === 'PGRST104') {
+      return null;
+    }
+    throw error;
+  }
+
+  const role = data?.role;
+  return role === 'owner' || role === 'editor' || role === 'viewer' ? role : null;
+}
+
+/**
  * Create a new project and optionally initialize languages
  */
 export async function createProject(
@@ -196,12 +219,17 @@ export async function createProject(
  * Delete a project (cascades via FK constraints)
  */
 export async function deleteProject(projectId: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('projects')
     .delete()
-    .eq('id', projectId);
+    .eq('id', projectId)
+    .select('id')
+    .maybeSingle();
 
   if (error) throw error;
+  if (!data) {
+    throw new Error('Unable to delete project. You may need owner access to perform this action.');
+  }
 }
 
 /**
