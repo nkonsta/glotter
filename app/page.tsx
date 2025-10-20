@@ -25,6 +25,8 @@ import { SidePanel } from '@/components/ui/SidePanel';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { Upload, Download, WandSparkles } from 'lucide-react';
+import AuthScreen from '@/components/auth/AuthScreen';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 interface Project {
   id: string;
@@ -38,6 +40,7 @@ interface Language {
 
 export default function Home() {
   const { toast } = useToast();
+  const { user, loading: authLoading, signOut: signOutUser } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [languages, setLanguages] = useState<Language[]>([]);
@@ -84,6 +87,7 @@ export default function Home() {
   const [importFileName, setImportFileName] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [clearBeforeImport, setClearBeforeImport] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   // Export dialog state
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -110,16 +114,6 @@ export default function Home() {
       return a.code.localeCompare(b.code);
     });
   }, [languages]);
-
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  useEffect(() => {
-    if (selectedProject) {
-      loadProjectData(selectedProject);
-    }
-  }, [selectedProject]);
 
   const applyFilters = useCallback(() => {
     let filtered = translations;
@@ -192,7 +186,7 @@ export default function Home() {
 
   // duplicate applyFilters removed (now defined via useCallback above)
 
-  async function loadProjects() {
+  const loadProjects = useCallback(async () => {
     try {
       const data = await getProjects();
       setProjects(data);
@@ -202,9 +196,9 @@ export default function Home() {
       setLoading(false);
       console.error(err);
     }
-  }
+  }, []);
 
-  async function loadProjectData(projectId: string) {
+  const loadProjectData = useCallback(async (projectId: string) => {
     try {
       setLoading(true);
       const [langs, trans] = await Promise.all([
@@ -220,7 +214,45 @@ export default function Home() {
       setLoading(false);
       console.error(err);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!user) {
+      setProjects([]);
+      setLanguages([]);
+      setTranslations([]);
+      setFilteredTranslations([]);
+      setSelectedProject('');
+      setVisibleLanguages(new Set());
+      setLoading(false);
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
+    loadProjects();
+  }, [authLoading, user, loadProjects]);
+
+  useEffect(() => {
+    if (authLoading || !user || !selectedProject) return;
+    loadProjectData(selectedProject);
+  }, [authLoading, user, selectedProject, loadProjectData]);
+
+  const handleSignOut = useCallback(async () => {
+    try {
+      setSigningOut(true);
+      const { error } = await signOutUser();
+      if (error) throw error;
+      toast({ title: 'Signed out', description: 'You have been signed out safely.', variant: 'info' });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Sign out failed', description: 'Please try again.', variant: 'error' });
+    } finally {
+      setSigningOut(false);
+    }
+  }, [signOutUser, toast]);
 
   function exportLanguage(langCode: string, fallbackLang: string) {
     // Build flat maps for target and fallback
@@ -317,6 +349,10 @@ export default function Home() {
     toast({ title: 'Deleted', description: msg, variant: 'success' });
   }
 
+  if (!user) {
+    return <AuthScreen />;
+  }
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface text-foreground">
@@ -403,6 +439,23 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <ThemeToggle />
+            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-muted max-w-[220px]">
+              <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 10-8 0 4 4 0 008 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 21a7 7 0 0116 0" />
+              </svg>
+              <span className="truncate">{user.email}</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleSignOut} disabled={signingOut}>
+              {signingOut ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner size={14} />
+                  Signing out…
+                </span>
+              ) : (
+                'Sign out'
+              )}
+            </Button>
           </div>
         </div>
       </header>
