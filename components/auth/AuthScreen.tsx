@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import type { AuthError } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/Button";
@@ -92,6 +93,14 @@ export default function AuthScreen() {
       </div>
       <div className="max-w-md w-full space-y-8 bg-surface-elevated border border-border rounded-2xl shadow-card p-8">
         <div className="space-y-2 text-center">
+          <Image
+            src="/chinese.svg"
+            alt="Friendly character illustration"
+            width={96}
+            height={96}
+            className="mx-auto h-24 w-24"
+            priority
+          />
           <h1 className="text-2xl font-semibold text-foreground">Glotter</h1>
           <p className="text-muted text-sm">
             {mode === "sign-in" && "Sign in to manage your translation projects."}
@@ -229,4 +238,3 @@ export default function AuthScreen() {
     </main>
   );
 }
-
