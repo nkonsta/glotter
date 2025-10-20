@@ -126,10 +126,12 @@ export default function Home() {
 
   const canManageMembers = isPlatformAdmin;
   const canEditCells = isPlatformAdmin || projectRole === 'owner' || projectRole === 'editor';
+  const canImportData = isPlatformAdmin || projectRole === 'owner';
+  const canUseAi = isPlatformAdmin || projectRole === 'owner';
   const canManageLanguages = isPlatformAdmin || projectRole === 'owner';
   const canDeleteProject = canManageLanguages;
   const canManageKeys = isPlatformAdmin || projectRole === 'owner';
-  const canRenameKeys = isPlatformAdmin || projectRole === 'owner' || projectRole === 'editor';
+  const canRenameKeys = isPlatformAdmin || projectRole === 'owner';
   const canAddKey = isPlatformAdmin || projectRole === 'owner';
   const hasProjectActions = canManageMembers || canManageLanguages || canDeleteProject;
   const applyFilters = useCallback(() => {
@@ -251,6 +253,25 @@ export default function Home() {
       setIsManageMembersOpen(false);
     }
   }, [canManageMembers]);
+
+  useEffect(() => {
+    if (!canUseAi) {
+      setIsAiOpen(false);
+      setAiPreview(null);
+      setAiBusy(false);
+      setAiGlossaryCsv('');
+      setAiTargets(new Set());
+      setAiChunking(null);
+      aiCancelRef.current = { cancelled: false, controller: null };
+    }
+  }, [canUseAi]);
+
+  useEffect(() => {
+    if (!canImportData) {
+      setIsImportOpen(false);
+      resetImportFileState();
+    }
+  }, [canImportData]);
 
   function persistVisibleLanguages(next: Set<string>) {
     if (!selectedProject) return;
@@ -636,9 +657,9 @@ export default function Home() {
                     variant="outline"
                     size="md"
                     className="gap-2 w-full sm:w-auto justify-center"
-                    disabled={!canEditCells}
+                    disabled={!canImportData}
                     onClick={() => {
-                      if (!canEditCells) return;
+                      if (!canImportData) return;
                       resetImportFileState();
                       setImportTargetLang(sortedLanguages[0]?.code || 'en');
                       setImportMode('merge');
@@ -654,9 +675,9 @@ export default function Home() {
                     variant="outline"
                     size="md"
                     className="gap-2 w-full sm:w-auto justify-center"
-                    disabled={!canEditCells}
+                    disabled={!canUseAi}
                     onClick={() => {
-                      if (!canEditCells || sortedLanguages.length === 0) return;
+                      if (!canUseAi || sortedLanguages.length === 0) return;
                       const selectedSource = sortedLanguages.find(l => l.code.toLowerCase() === 'en')?.code || sortedLanguages[0].code;
                       setAiSourceLang(selectedSource);
                       // default targets: visible languages except source with any missing values
@@ -876,6 +897,7 @@ export default function Home() {
               allowCellEditing={canEditCells}
               allowRowSelection={canManageKeys}
               allowRename={canRenameKeys}
+              allowAiActions={canUseAi}
             />
 
           <SidePanel
@@ -975,11 +997,13 @@ export default function Home() {
                     toast({ title: 'Project created', description: `Project ${project.name} created`, variant: 'success' });
                     // Offer import for the first language
                     const primaryLang = (langs[0]?.code || 'en').toLowerCase();
-                    resetImportFileState();
-                    setImportTargetLang(primaryLang);
-                    setImportMode('merge');
-                    setDeleteMissing(false);
-                    setIsImportOpen(true);
+                    if (canImportData) {
+                      resetImportFileState();
+                      setImportTargetLang(primaryLang);
+                      setImportMode('merge');
+                      setDeleteMissing(false);
+                      setIsImportOpen(true);
+                    }
                   } catch (e) {
                     console.error(e);
                     toast({ title: 'Error', description: 'Failed to create project', variant: 'error' });
@@ -998,22 +1022,23 @@ export default function Home() {
         </DialogContent>
       </Dialog>
       {/* AI Translate Dialog */}
-      <Dialog
-        open={isAiOpen}
-        onOpenChange={(open) => {
-          setIsAiOpen(open);
-          if (!open) {
-            setAiPreview(null);
-            setAiGlossaryCsv('');
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>AI fill missing translations</DialogTitle>
-            <DialogDescription>Generate suggestions for missing cells while preserving placeholders.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
+      {canUseAi && (
+        <Dialog
+          open={isAiOpen}
+          onOpenChange={(open) => {
+            setIsAiOpen(open);
+            if (!open) {
+              setAiPreview(null);
+              setAiGlossaryCsv('');
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>AI fill missing translations</DialogTitle>
+              <DialogDescription>Generate suggestions for missing cells while preserving placeholders.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Source language</label>
@@ -1260,9 +1285,10 @@ export default function Home() {
                 </div>
               </div>
             )}
-          </div>
-        </DialogContent>
-      </Dialog>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Manage Languages Dialog */}
       {canManageLanguages && (
@@ -1312,11 +1338,13 @@ export default function Home() {
                     setNewLangName('');
                     toast({ title: 'Language added', description: `Added ${code.toUpperCase()}`, variant: 'success' });
                     // Prompt to import for the new language
-                    resetImportFileState();
-                    setImportTargetLang(code.toLowerCase());
-                    setImportMode('merge');
-                    setDeleteMissing(false);
-                    setIsImportOpen(true);
+                    if (canImportData) {
+                      resetImportFileState();
+                      setImportTargetLang(code.toLowerCase());
+                      setImportMode('merge');
+                      setDeleteMissing(false);
+                      setIsImportOpen(true);
+                    }
                   } catch (e) {
                     console.error(e);
                     toast({ title: 'Error', description: 'Failed to add language', variant: 'error' });
@@ -1599,20 +1627,21 @@ export default function Home() {
         </DialogContent>
       </Dialog>
       {/* Import JSON Dialog */}
-      <Dialog
-        open={isImportOpen}
-        onOpenChange={(open) => {
-          setIsImportOpen(open);
-          // Always reset file-related transient state so reopening shows a clean slate
-          resetImportFileState();
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Import JSON</DialogTitle>
-            <DialogDescription>Upload a JSON file to populate values. Default scope is a single language.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
+      {canImportData && (
+        <Dialog
+          open={isImportOpen}
+          onOpenChange={(open) => {
+            setIsImportOpen(open);
+            // Always reset file-related transient state so reopening shows a clean slate
+            resetImportFileState();
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Import JSON</DialogTitle>
+              <DialogDescription>Upload a JSON file to populate values. Default scope is a single language.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Target language</label>
@@ -1790,9 +1819,10 @@ export default function Home() {
                 {importBusy ? 'Importing…' : 'Apply import'}
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

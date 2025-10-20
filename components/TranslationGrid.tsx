@@ -25,9 +25,10 @@ interface TranslationGridProps {
   allowCellEditing: boolean;
   allowRowSelection: boolean;
   allowRename: boolean;
+  allowAiActions: boolean;
 }
 
-export default function TranslationGrid({ data, languages, onOpenAllLanguages, onDeletedKeys, allowCellEditing, allowRowSelection, allowRename }: TranslationGridProps) {
+export default function TranslationGrid({ data, languages, onOpenAllLanguages, onDeletedKeys, allowCellEditing, allowRowSelection, allowRename, allowAiActions }: TranslationGridProps) {
   const { toast } = useToast();
   const [tableData, setTableData] = useState(data);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
@@ -163,6 +164,8 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     const currentKey = tableData[rowIndex]?.key || '';
     setRenameDialog({ open: true, rowIndex, value: currentKey });
   }, [allowRename, tableData]);
+
+  const canUseAiRow = allowAiActions;
 
   const columns = useMemo(() => {
     const colDefs: ColumnDef<TranslationRow, unknown>[] = [];
@@ -343,9 +346,8 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     toggleAllRows,
     toggleRowSelection,
     openRename,
+    allowAiActions,
   ]);
-
-  const canUseAiRow = allowCellEditing;
 
   const table = useReactTable({
     data: paginatedData,
