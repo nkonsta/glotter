@@ -2,13 +2,31 @@ import { supabase, TranslationRow, Project, ProjectLanguage } from './supabase';
 
 export type ProjectRole = 'owner' | 'editor' | 'viewer';
 
+interface ProjectLanguageRecord {
+  id: string;
+  language_code: string;
+  language_name: string | null;
+}
+
+interface TranslationRecord {
+  id: string;
+  project_language_id: string;
+  value: string | null;
+}
+
+interface TranslationKeyRecord {
+  id: string;
+  key: string;
+  translations?: TranslationRecord[];
+}
+
 /**
  * Fetch all translations for a project in grid format
  * Returns translation keys as rows with languages as columns
  */
 export async function getTranslationsGrid(projectId: string): Promise<TranslationRow[]> {
   // First, get all languages for this project
-  const { data: languages, error: langError } = await supabase
+  const { data: languagesData, error: langError } = await supabase
     .from('project_languages')
     .select('id, language_code, language_name')
     .eq('project_id', projectId)
@@ -16,17 +34,19 @@ export async function getTranslationsGrid(projectId: string): Promise<Translatio
     .order('language_code');
 
   if (langError) throw langError;
-  if (!languages) return [];
+  const languages = (languagesData ?? []) as ProjectLanguageRecord[];
+  if (languages.length === 0) return [];
 
   // Get all translation keys with their translations using a single query with embedding
-  const { data: keys, error: keysError } = await supabase
+  const { data: keysData, error: keysError } = await supabase
     .from('translation_keys')
     .select('id, key, translations(id, project_language_id, value)')
     .eq('project_id', projectId)
     .order('key');
 
   if (keysError) throw keysError;
-  if (!keys) return [];
+  const keys = (keysData ?? []) as TranslationKeyRecord[];
+  if (keys.length === 0) return [];
 
   // Build the grid structure
   const rows: TranslationRow[] = keys.map(key => {
@@ -34,7 +54,7 @@ export async function getTranslationsGrid(projectId: string): Promise<Translatio
 
     languages.forEach(lang => {
       const translation = key.translations?.find(
-        (t: { id: string; project_language_id: string; value: string | null }) => t.project_language_id === lang.id
+        (t) => t.project_language_id === lang.id
       );
 
       translationsMap[lang.language_code] = {
@@ -144,7 +164,7 @@ export async function getProjects() {
 /**
  * Get languages for a project
  */
-export async function getProjectLanguages(projectId: string) {
+export async function getProjectLanguages(projectId: string): Promise<ProjectLanguage[]> {
   const { data, error } = await supabase
     .from('project_languages')
     .select('*')
@@ -153,7 +173,7 @@ export async function getProjectLanguages(projectId: string) {
     .order('language_code');
 
   if (error) throw error;
-  return data || [];
+  return (data ?? []) as ProjectLanguage[];
 }
 
 /**
@@ -162,7 +182,7 @@ export async function getProjectLanguages(projectId: string) {
 export async function getProjectMemberRole(projectId: string): Promise<ProjectRole | null> {
   const { data, error } = await supabase
     .from('project_members')
-    .select<{ role: ProjectRole }>('role')
+    .select('role')
     .eq('project_id', projectId)
     .maybeSingle();
 
@@ -173,7 +193,7 @@ export async function getProjectMemberRole(projectId: string): Promise<ProjectRo
     throw error;
   }
 
-  const role = data?.role;
+  const role = typeof data === 'object' && data && 'role' in data ? (data.role as string | null | undefined) : null;
   return role === 'owner' || role === 'editor' || role === 'viewer' ? role : null;
 }
 
@@ -314,7 +334,8 @@ export async function getLanguageCodeToIdMap(projectId: string): Promise<Record<
     .eq('is_active', true);
   if (error) throw error;
   const map: Record<string, string> = {};
-  (data || []).forEach((row: any) => {
+  const rows = (data ?? []) as Array<{ id: string; language_code: string }>;
+  rows.forEach((row) => {
     map[row.language_code] = row.id;
   });
   return map;
@@ -343,7 +364,8 @@ export async function getKeyToIdMap(projectId: string): Promise<Record<string, s
     .eq('project_id', projectId);
   if (error) throw error;
   const map: Record<string, string> = {};
-  (data || []).forEach((row: any) => { map[row.key] = row.id; });
+  const rows = (data ?? []) as Array<{ id: string; key: string }>;
+  rows.forEach((row) => { map[row.key] = row.id; });
   return map;
 }
 
@@ -413,9 +435,10 @@ export async function deleteMissingTranslations(
     .eq('project_id', projectId);
   if (keyErr) throw keyErr;
   const keepSet = new Set(keepKeys);
-  const toDeleteKeyIds = (keyRows || [])
-    .filter((k: any) => !keepSet.has(k.key))
-    .map((k: any) => k.id);
+  const keyRecords = (keyRows ?? []) as Array<{ id: string; key: string }>;
+  const toDeleteKeyIds = keyRecords
+    .filter(k => !keepSet.has(k.key))
+    .map(k => k.id);
   if (toDeleteKeyIds.length === 0) return 0;
 
   let total = 0;

@@ -167,8 +167,8 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
 
   const canUseAiRow = allowAiActions;
 
-  const columns = useMemo(() => {
-    const colDefs: ColumnDef<TranslationRow, unknown>[] = [];
+  const columns = useMemo<ColumnDef<TranslationRow, any>[]>(() => {
+    const colDefs: ColumnDef<TranslationRow, any>[] = [];
 
     if (allowRowSelection) {
       colDefs.push(
@@ -207,10 +207,12 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
         cell: info => {
           const displayRowIndex = info.row.index;
           const actualRowIndex = startIndex + displayRowIndex;
+          const rawValue = info.getValue();
+          const keyValue = typeof rawValue === 'string' ? rawValue : '';
           return (
             <div className="group/ky flex items-center justify-between gap-2 min-w-[140px] sm:min-w-[180px] max-w-[220px] sm:max-w-[240px]">
               <div className="font-medium text-foreground tracking-tight text-sm break-words">
-                {info.getValue()}
+                {keyValue}
               </div>
               {(allowRename || onOpenAllLanguages) && (
                 <div className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
@@ -266,7 +268,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
               const actualRowIndex = startIndex + displayRowIndex;
               const langCode = lang.code;
               const isEditing = editingCell?.row === actualRowIndex && editingCell?.col === langCode;
-              const value = info.getValue();
+	              const value = info.getValue() as string | null;
 
               if (!allowCellEditing) {
                 const isMissing = !value;
@@ -345,9 +347,8 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     tableData,
     toggleAllRows,
     toggleRowSelection,
-    openRename,
-    allowAiActions,
-  ]);
+	    openRename,
+	  ]);
 
   const table = useReactTable({
     data: paginatedData,

@@ -70,12 +70,12 @@ export async function POST(req: NextRequest) {
     const resp: AiTranslateResponseBody = { translations };
     console.log(`[AI][${reqId}] success langs=${Object.keys(translations).length}`);
     return NextResponse.json(resp);
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(`[AI][${reqId}] error`, err);
-    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   } finally {
     inFlight--;
   }
 }
-
 

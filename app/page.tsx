@@ -29,6 +29,7 @@ import { Upload, Download, WandSparkles } from 'lucide-react';
 import AuthScreen from '@/components/auth/AuthScreen';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { supabase } from '@/lib/supabase';
+import type { AiSuggestedTranslation, AiTranslateResponseBody } from '@/lib/ai/types';
 
 interface Project {
   id: string;
@@ -38,6 +39,16 @@ interface Project {
 interface Language {
   code: string;
   name: string | null;
+}
+
+interface ImportArrayRecord {
+  key: string;
+  lang?: unknown;
+  value?: unknown;
+}
+
+function isImportArrayRecord(value: unknown): value is ImportArrayRecord {
+  return typeof value === 'object' && value !== null && typeof (value as { key?: unknown }).key === 'string';
 }
 
 export default function Home() {
@@ -53,7 +64,6 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'missing' | 'complete'>('all');
   // Columns visibility handled via DropdownMenu
-  const [showProjectMenu, setShowProjectMenu] = useState(false);
   const [isAddKeyOpen, setIsAddKeyOpen] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [creatingKey, setCreatingKey] = useState(false);
@@ -105,7 +115,7 @@ export default function Home() {
   const [aiTargets, setAiTargets] = useState<Set<string>>(new Set());
   const [aiBusy, setAiBusy] = useState(false);
   const [aiGlossaryCsv, setAiGlossaryCsv] = useState('');
-  const [aiPreview, setAiPreview] = useState<Record<string, Array<{ key: string; text: string; aiText: string; error?: string }>> | null>(null);
+  const [aiPreview, setAiPreview] = useState<Record<string, AiSuggestedTranslation[]> | null>(null);
   // Bulk AI chunking state
   const [aiChunking, setAiChunking] = useState<{ running: boolean; processed: number; total: number } | null>(null);
   const aiCancelRef = useRef<{ cancelled: boolean; controller: AbortController | null }>({ cancelled: false, controller: null });
@@ -186,9 +196,9 @@ export default function Home() {
       };
     }
 
-    supabase
-      .rpc('is_platform_admin')
-      .then(({ data, error }) => {
+    const fetchPlatformRole = async () => {
+      try {
+        const { data, error } = await supabase.rpc('is_platform_admin');
         if (!isMounted) return;
         if (error) {
           console.error('Failed to determine platform admin status', error);
@@ -196,12 +206,14 @@ export default function Home() {
           return;
         }
         setIsPlatformAdmin(Boolean(data));
-      })
-      .catch((error) => {
+      } catch (err) {
         if (!isMounted) return;
-        console.error('Failed to determine platform admin status', error);
+        console.error('Failed to determine platform admin status', err);
         setIsPlatformAdmin(false);
-      });
+      }
+    };
+
+    void fetchPlatformRole();
 
     return () => {
       isMounted = false;
@@ -379,7 +391,7 @@ export default function Home() {
     const nested: Record<string, unknown> = {};
     Object.keys(targetMap).forEach(k => {
       const val = targetMap[k] ?? fallbackMap[k];
-      if (val != null) setNested(nested as any, k, val);
+      if (val != null) setNested(nested, k, val);
     });
 
     // ASCII-only
@@ -413,7 +425,7 @@ export default function Home() {
         const nested: Record<string, unknown> = {};
         translations.forEach(row => {
           const val = row.translations[code]?.value ?? fbMap[row.key];
-          if (val != null) setNested(nested as any, row.key, val);
+          if (val != null) setNested(nested, row.key, val);
         });
         // ASCII-only export: escape non-ASCII to \uXXXX
         const json = JSON.stringify(nested, null, 2).replace(/[\u0080-\uFFFF]/g, (ch) => {
@@ -1151,7 +1163,7 @@ export default function Home() {
                       }
                       aiCancelRef.current.cancelled = false;
                       setAiChunking({ running: true, processed: 0, total: limited.length });
-                      const aggregate: Record<string, Array<{ key: string; text: string; aiText: string; error?: string }>> = {};
+                      const aggregate: Record<string, AiSuggestedTranslation[]> = {};
                       const glossary = aiGlossaryCsv
                         .split('\n').map(l => l.trim()).filter(Boolean)
                         .map(line => { const [source, target] = line.split(','); return { source: (source || '').trim(), target: (target || '').trim() }; })
@@ -1173,11 +1185,11 @@ export default function Home() {
                           signal: controller.signal,
                         });
                         if (!res.ok) throw new Error(await res.text());
-                        const json = await res.json();
-                        for (const [lang, list] of Object.entries(json.translations || {})) {
+                        const json = (await res.json()) as AiTranslateResponseBody;
+                        Object.entries(json.translations).forEach(([lang, list]) => {
                           if (!aggregate[lang]) aggregate[lang] = [];
-                          aggregate[lang].push(...(list as any));
-                        }
+                          aggregate[lang].push(...list);
+                        });
                         setAiChunking({ running: true, processed: Math.min(i + chunk.length, limited.length), total: limited.length });
                         aiCancelRef.current.controller = null;
                       }
@@ -1714,11 +1726,14 @@ export default function Home() {
                         map = toKeyToValueMap(decodedObj);
                       } else if (Array.isArray(json)) {
                         const tmp: Record<string, unknown> = {};
-                        for (const rec of json as Array<any>) {
-                          if (rec && typeof rec.key === 'string' && (rec.lang == null || String(rec.lang).toLowerCase() === importTargetLang)) {
-                            tmp[rec.key] = typeof rec.value === 'string' ? decodeUnicodeEscapes(rec.value) : rec.value;
-                          }
-                        }
+                        const targetLangLower = importTargetLang.toLowerCase();
+                        json.forEach(rec => {
+                          if (!isImportArrayRecord(rec)) return;
+                          const langMatch = rec.lang == null || String(rec.lang).toLowerCase() === targetLangLower;
+                          if (!langMatch) return;
+                          const rawValue = rec.value;
+                          tmp[rec.key] = typeof rawValue === 'string' ? decodeUnicodeEscapes(rawValue) : rawValue;
+                        });
                         map = toKeyToValueMap(tmp);
                       }
 

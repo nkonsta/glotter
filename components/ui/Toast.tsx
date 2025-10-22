@@ -70,9 +70,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   // Cleanup timers on unmount
   useEffect(() => {
+    const timers = timersRef.current;
     return () => {
-      timersRef.current.forEach((h) => window.clearTimeout(h));
-      timersRef.current.clear();
+      timers.forEach((h) => window.clearTimeout(h));
+      timers.clear();
     };
   }, []);
 
@@ -154,5 +155,4 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
     </div>
   );
 }
-
 

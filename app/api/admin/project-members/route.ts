@@ -128,13 +128,14 @@ export async function POST(req: Request) {
 
   const role = roleValue as AllowedRole;
 
-  const { data: listResult, error: lookupError } = await supabase.auth.admin.listUsers({ email });
+  const { data: listResult, error: lookupError } = await supabase.auth.admin.listUsers();
 
   if (lookupError) {
     return NextResponse.json({ error: 'Failed to look up user in Supabase Auth.' }, { status: 500 });
   }
 
-  let targetUser = listResult?.users?.[0] ?? null;
+  const matchingUser = listResult?.users?.find(u => u.email?.toLowerCase() === email) ?? null;
+  let targetUser = matchingUser;
 
   if (!targetUser) {
     const { data: invitedUser, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email);

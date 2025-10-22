@@ -7,6 +7,20 @@ const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.GPT_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5-mini';
 
+interface ChatCompletionResponse {
+  choices?: Array<{ message?: { content?: string | null } | null }>;
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 function buildSystemPrompt(targetLang: string, glossary?: AiGlossaryTerm[]): string {
   const glossaryLines = (glossary && glossary.length > 0)
     ? `\nGlossary (authoritative, never deviate):\n${glossary.map(t => `${t.source} => ${t.target}`).join('\n')}`
@@ -34,7 +48,7 @@ async function callOpenAI(
   verbose: boolean,
 ): Promise<string> {
   let attempt = 0;
-  let lastErr: any;
+  let lastErr: unknown;
   while (attempt <= MAX_RETRIES) {
     const startedAt = Date.now();
     const controller = new AbortController();
@@ -62,8 +76,8 @@ async function callOpenAI(
         console.error(`[AI][${reqId}] openai.error idx=${idx} attempt=${attempt} status=${res.status} body=${text}`);
         throw new Error(`OpenAI error ${res.status}: ${text}`);
       }
-      const json = await res.json();
-      const content: string = json.choices?.[0]?.message?.content ?? '';
+      const json = (await res.json()) as ChatCompletionResponse;
+      const content = json.choices?.[0]?.message?.content ?? '';
       const ms = Date.now() - startedAt;
       if (verbose) {
         console.log(`[AI][${reqId}] openai.response idx=${idx} ms=${ms} preview=`, (content || '').slice(0, 200));
@@ -72,17 +86,20 @@ async function callOpenAI(
       }
       clearTimeout(timer);
       return content.trim();
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(timer);
       lastErr = err;
       const backoff = Math.min(8000, 1000 * Math.pow(2, attempt)) + Math.floor(Math.random() * 250);
-      console.warn(`[AI][${reqId}] openai.retry idx=${idx} attempt=${attempt} error=${err?.message || err} backoffMs=${backoff}`);
+      console.warn(`[AI][${reqId}] openai.retry idx=${idx} attempt=${attempt} error=${describeError(err)} backoffMs=${backoff}`, err);
       attempt += 1;
       if (attempt > MAX_RETRIES) break;
       await sleep(backoff);
     }
   }
-  throw lastErr || new Error('OpenAI request failed');
+  if (lastErr instanceof Error) {
+    throw lastErr;
+  }
+  throw new Error(describeError(lastErr));
 }
 
 export class OpenAiProvider implements AiProvider {
@@ -98,7 +115,7 @@ export class OpenAiProvider implements AiProvider {
     glossary?: AiGlossaryTerm[];
     abortSignal?: AbortSignal;
   }): Promise<{ outputs: string[] }> {
-    const { targetLanguage, inputs, glossary, abortSignal } = params;
+    const { targetLanguage, inputs, glossary } = params;
     const reqId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const verbose = (process.env.AI_LOG_VERBOSE === '1' || process.env.AI_LOG_VERBOSE === 'true');
     console.log(`[AI][${reqId}] translateBatch start provider=openai model=${this.model} target=${targetLanguage} inputs=${inputs.length}`);
@@ -135,7 +152,7 @@ export class OpenAiProvider implements AiProvider {
           } else {
             throw new Error('Model did not return a JSON array');
           }
-        } catch (e) {
+        } catch {
           console.error(`[AI][${reqId}] parse_error group_start=${start} body=`, completion.slice(0, 500));
           // Fallback: split lines (best-effort)
           translated = cleaned.split('\n').filter(Boolean);
@@ -146,8 +163,8 @@ export class OpenAiProvider implements AiProvider {
           const restored = restorePlaceholders(translated[i] ?? '', protectedItems[i].mapping);
           outputs.push(restored);
         }
-      } catch (err: any) {
-        console.error(`[AI][${reqId}] group_failed start=${start} count=${slice.length} error=${err?.message || err}`);
+      } catch (err: unknown) {
+        console.error(`[AI][${reqId}] group_failed start=${start} count=${slice.length} error=${describeError(err)}`, err);
         // Degrade gracefully: fill with empty outputs for this group
         for (let i = 0; i < protectedItems.length; i++) {
           outputs.push('');
@@ -158,5 +175,3 @@ export class OpenAiProvider implements AiProvider {
     return { outputs };
   }
 }
-
-
