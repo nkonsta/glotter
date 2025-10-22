@@ -167,17 +167,16 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
 
   const canUseAiRow = allowAiActions;
 
-  const columns = useMemo<ColumnDef<TranslationRow, any>[]>(() => {
-    const colDefs: ColumnDef<TranslationRow, any>[] = [];
+  const columns = useMemo<ColumnDef<TranslationRow, unknown>[]>(() => {
+    const colDefs: ColumnDef<TranslationRow, unknown>[] = [];
 
     if (allowRowSelection) {
-      colDefs.push(
-        columnHelper.display({
-          id: 'select',
-          header: () => (
-            <input
-              type="checkbox"
-              checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
+      const selectColumn = columnHelper.display({
+        id: 'select',
+        header: () => (
+          <input
+            type="checkbox"
+            checked={selectedRows.size === paginatedData.length && paginatedData.length > 0}
               onChange={toggleAllRows}
               aria-label="Select all rows"
               className="w-4 h-4 text-primary border border-border rounded focus:ring-2 focus:ring-primary cursor-pointer bg-surface"
@@ -196,136 +195,133 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
               />
             );
           },
-        })
-      );
+        });
+      colDefs.push(selectColumn as ColumnDef<TranslationRow, unknown>);
     }
 
-    colDefs.push(
-      columnHelper.accessor('key', {
-        id: 'key',
-        header: 'Key',
-        cell: info => {
-          const displayRowIndex = info.row.index;
-          const actualRowIndex = startIndex + displayRowIndex;
-          const rawValue = info.getValue();
-          const keyValue = typeof rawValue === 'string' ? rawValue : '';
-          return (
-            <div className="group/ky flex items-center justify-between gap-2 min-w-[140px] sm:min-w-[180px] max-w-[220px] sm:max-w-[240px]">
-              <div className="font-medium text-foreground tracking-tight text-sm break-words">
-                {keyValue}
-              </div>
-              {(allowRename || onOpenAllLanguages) && (
-                <div className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
-                  {allowRename && (
-                    <button
-                      className="text-muted hover:text-foreground transition-colors"
-                      onClick={() => openRename(actualRowIndex)}
-                      aria-label="Rename key"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
-                    </button>
-                  )}
-                  {onOpenAllLanguages && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={() => onOpenAllLanguages(actualRowIndex)}
-                            className="text-muted hover:text-foreground transition-colors"
-                            aria-label="Edit all languages for this key"
-                          >
-                            <Languages className="h-4 w-4" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>Edit all languages</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </div>
-              )}
+    const keyColumn = columnHelper.accessor(row => row.key, {
+      id: 'key',
+      header: 'Key',
+      cell: info => {
+        const displayRowIndex = info.row.index;
+        const actualRowIndex = startIndex + displayRowIndex;
+        const keyValue = info.getValue() as string;
+        return (
+          <div className="group/ky flex items-center justify-between gap-2 min-w-[140px] sm:min-w-[180px] max-w-[220px] sm:max-w-[240px]">
+            <div className="font-medium text-foreground tracking-tight text-sm break-words">
+              {keyValue}
             </div>
-          );
-        },
-      })
-    );
+            {(allowRename || onOpenAllLanguages) && (
+              <div className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
+                {allowRename && (
+                  <button
+                    className="text-muted hover:text-foreground transition-colors"
+                    onClick={() => openRename(actualRowIndex)}
+                    aria-label="Rename key"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                )}
+                {onOpenAllLanguages && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => onOpenAllLanguages(actualRowIndex)}
+                          className="text-muted hover:text-foreground transition-colors"
+                          aria-label="Edit all languages for this key"
+                        >
+                          <Languages className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>Edit all languages</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      },
+    });
+    colDefs.push(keyColumn as ColumnDef<TranslationRow, unknown>);
 
     languages.forEach(lang => {
-      colDefs.push(
-        columnHelper.accessor(
-          row => row.translations[lang.code]?.value,
-          {
-            id: lang.code,
-            header: () => (
-              <div className="text-center">
-                <div className="font-medium text-muted-foreground text-xs uppercase tracking-wide">{lang.code}</div>
-                {lang.name && <div className="text-xs font-normal text-muted mt-0.5">{lang.name}</div>}
-              </div>
-            ),
-            cell: info => {
-              const displayRowIndex = info.row.index;
-              const actualRowIndex = startIndex + displayRowIndex;
-              const langCode = lang.code;
-              const isEditing = editingCell?.row === actualRowIndex && editingCell?.col === langCode;
-	              const value = info.getValue() as string | null;
+      const langColumn = columnHelper.accessor(
+        (row) => row.translations[lang.code]?.value ?? null,
+        {
+          id: lang.code,
+          header: () => (
+            <div className="text-center">
+              <div className="font-medium text-muted-foreground text-xs uppercase tracking-wide">{lang.code}</div>
+              {lang.name && <div className="text-xs font-normal text-muted mt-0.5">{lang.name}</div>}
+            </div>
+          ),
+          cell: info => {
+            const displayRowIndex = info.row.index;
+            const actualRowIndex = startIndex + displayRowIndex;
+            const langCode = lang.code;
+            const isEditing = editingCell?.row === actualRowIndex && editingCell?.col === langCode;
+            const value = info.getValue() as string | null;
 
-              if (!allowCellEditing) {
-                const isMissing = !value;
-                return (
-                  <div className="min-w-[180px] sm:min-w-[240px] max-w-[260px] sm:max-w-[400px]">
-                    <div
-                      className={`relative p-2 text-sm rounded-md min-h-[44px] ${
-                        isMissing ? 'bg-[hsl(var(--warning)/0.12)] text-warning' : ''
-                      }`}
-                    >
-                      {isMissing ? (
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
-                          Missing
-                        </span>
-                      ) : (
-                        <div className="text-foreground flex-1">{value}</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-
+            if (!allowCellEditing) {
+              const isMissing = !value;
               return (
                 <div className="min-w-[180px] sm:min-w-[240px] max-w-[260px] sm:max-w-[400px]">
-                  {isEditing ? (
-                    <CellEditor
-                      key={`${actualRowIndex}-${langCode}`}
-                      initialValue={value || ''}
-                      onCommit={(v) => handleSave(actualRowIndex, langCode, v)}
-                      onKeyDown={(e, v) => handleKeyDown(e, actualRowIndex, langCode, v)}
-                    />
-                  ) : (
-                    <div
-                      onClick={() => {
-                        handleCellClick(actualRowIndex, langCode);
-                      }}
-                      className={`relative p-2 text-sm cursor-pointer rounded-md transition-all duration-150 ease-out min-h-[44px] ${
-                        !value
-                          ? 'hover:bg-[hsl(var(--warning)/0.14)]'
-                          : 'hover:bg-surface-hover'
-                      }`}
-                    >
-                      {!value ? (
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
-                          Missing
-                        </span>
-                      ) : (
-                        <div className="text-foreground flex-1">{value}</div>
-                      )}
-                    </div>
-                  )}
+                  <div
+                    className={`relative p-2 text-sm rounded-md min-h-[44px] ${
+                      isMissing ? 'bg-[hsl(var(--warning)/0.12)] text-warning' : ''
+                    }`}
+                  >
+                    {isMissing ? (
+                      <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
+                        Missing
+                      </span>
+                    ) : (
+                      <div className="text-foreground flex-1">{value}</div>
+                    )}
+                  </div>
                 </div>
               );
-            },
-          }
-        )
+            }
+
+            return (
+              <div className="min-w-[180px] sm:min-w-[240px] max-w-[260px] sm:max-w-[400px]">
+                {isEditing ? (
+                  <CellEditor
+                    key={`${actualRowIndex}-${langCode}`}
+                    initialValue={value || ''}
+                    onCommit={(v) => handleSave(actualRowIndex, langCode, v)}
+                    onKeyDown={(e, v) => handleKeyDown(e, actualRowIndex, langCode, v)}
+                  />
+                ) : (
+                  <div
+                    onClick={() => {
+                      handleCellClick(actualRowIndex, langCode);
+                    }}
+                    className={`relative p-2 text-sm cursor-pointer rounded-md transition-all duration-150 ease-out min-h-[44px] ${
+                      !value
+                        ? 'hover:bg-[hsl(var(--warning)/0.14)]'
+                        : 'hover:bg-surface-hover'
+                    }`}
+                  >
+                    {!value ? (
+                      <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
+                        Missing
+                      </span>
+                    ) : (
+                      <div className="text-foreground flex-1">{value}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          },
+        }
       );
+      colDefs.push(langColumn as ColumnDef<TranslationRow, unknown>);
     });
 
     return colDefs;
@@ -347,8 +343,8 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     tableData,
     toggleAllRows,
     toggleRowSelection,
-	    openRename,
-	  ]);
+    openRename,
+  ]);
 
   const table = useReactTable({
     data: paginatedData,
