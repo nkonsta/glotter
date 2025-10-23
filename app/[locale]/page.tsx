@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import { useTranslations } from 'next-intl';
 import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations, getProjectMemberRole, type ProjectRole } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import ManageProjectMembersDialog from '@/components/admin/ManageProjectMembersDialog';
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/DropdownMenu';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/Dialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { DropdownMenuCheckboxItem } from '@/components/ui/DropdownMenu';
 import { ImportMode, toKeyToValueMap, setNested, decodeUnicodeEscapes } from '@/lib/importExport';
 import { cn } from '@/lib/cn';
@@ -52,6 +54,7 @@ function isImportArrayRecord(value: unknown): value is ImportArrayRecord {
 }
 
 export default function Home() {
+  const t = useTranslations();
   const { toast } = useToast();
   const { user, session, loading: authLoading, signOut: signOutUser } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -513,7 +516,7 @@ export default function Home() {
                       <span>
                         {selectedProject
                           ? projects.find(p => p.id === selectedProject)?.name
-                          : "Select a project..."}
+                          : t('header.selectProject')}
                       </span>
                       <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -522,7 +525,7 @@ export default function Home() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-56">
                     <DropdownMenuItem onClick={() => setIsCreateProjectOpen(true)} className="font-medium">
-                      + New project…
+                      + {t('header.newProject')}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     {projects.map((project) => (
@@ -555,15 +558,15 @@ export default function Home() {
                     <DropdownMenuContent className="w-48" align="start">
                       {canManageMembers && (
                         <>
-                          <DropdownMenuItem onClick={() => setIsManageMembersOpen(true)}>Manage members…</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setIsManageMembersOpen(true)}>{t('header.manageMembers')}</DropdownMenuItem>
                           {(canManageLanguages || canDeleteProject) && <DropdownMenuSeparator />}
                         </>
                       )}
                       {canManageLanguages && (
-                        <DropdownMenuItem onClick={() => setIsManageLangsOpen(true)}>Manage languages…</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setIsManageLangsOpen(true)}>{t('header.manageLanguages')}</DropdownMenuItem>
                       )}
                       {canDeleteProject && (
-                        <DropdownMenuItem onClick={() => setIsDeleteProjectOpen(true)} className="text-danger focus:text-danger">Delete project…</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setIsDeleteProjectOpen(true)} className="text-danger focus:text-danger">{t('header.deleteProject')}</DropdownMenuItem>
                       )}
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -572,6 +575,7 @@ export default function Home() {
             )}
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <LanguageSwitcher />
             <ThemeToggle />
             <div className="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-muted max-w-[220px]">
               <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -584,10 +588,10 @@ export default function Home() {
               {signingOut ? (
                 <span className="inline-flex items-center gap-2">
                   <Spinner size={14} />
-                  Signing out…
+                  {t('header.signingOut')}
                 </span>
               ) : (
-                'Sign out'
+                t('header.signOut')
               )}
             </Button>
           </div>
