@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations, getProjectMemberRole, type ProjectRole } from '@/lib/translations';
+import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations, getProjectMembership, type ProjectMembership } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import ManageProjectMembersDialog from '@/components/admin/ManageProjectMembersDialog';
 import TranslationGrid from '@/components/TranslationGrid';
@@ -89,7 +89,7 @@ export default function Home() {
   const [deletingProject, setDeletingProject] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
-  const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
+  const [projectMembership, setProjectMembership] = useState<ProjectMembership | null>(null);
 
   // Import dialog state
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -130,19 +130,68 @@ export default function Home() {
     });
   }, [languages]);
 
+  const languageCodeSet = useMemo(() => new Set(sortedLanguages.map(lang => lang.code)), [sortedLanguages]);
+  const isOwner = projectMembership?.role === 'owner';
+
+  const allowedViewSet = useMemo(() => {
+    if (isPlatformAdmin || isOwner) {
+      return new Set(languageCodeSet);
+    }
+    const allowed = new Set<string>();
+    (projectMembership?.viewLanguages ?? []).forEach((code) => {
+      if (languageCodeSet.has(code)) {
+        allowed.add(code);
+      }
+    });
+    return allowed;
+  }, [isPlatformAdmin, isOwner, projectMembership, languageCodeSet]);
+
+  const editableLanguageSet = useMemo(() => {
+    if (isPlatformAdmin || isOwner) {
+      return new Set(languageCodeSet);
+    }
+    const editable = new Set<string>();
+    (projectMembership?.editLanguages ?? []).forEach((code) => {
+      if (languageCodeSet.has(code)) {
+        editable.add(code);
+      }
+    });
+    return editable;
+  }, [isPlatformAdmin, isOwner, projectMembership, languageCodeSet]);
+
+  const persistVisibleLanguages = useCallback((next: Set<string>) => {
+    if (!selectedProject) return;
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          VISIBLE_KEY_PREFIX + selectedProject,
+          JSON.stringify(Array.from(next))
+        );
+      }
+    } catch {}
+  }, [selectedProject]);
+
+  const gridLanguages = useMemo(
+    () =>
+      sortedLanguages.filter(
+        (lang) => allowedViewSet.has(lang.code) && visibleLanguages.has(lang.code)
+      ),
+    [sortedLanguages, allowedViewSet, visibleLanguages]
+  );
+
   const selectedProjectInfo = useMemo(() => {
     return projects.find(project => project.id === selectedProject) ?? null;
   }, [projects, selectedProject]);
 
-  const canManageMembers = isPlatformAdmin;
-  const canEditCells = isPlatformAdmin || projectRole === 'owner' || projectRole === 'editor';
-  const canImportData = isPlatformAdmin || projectRole === 'owner';
-  const canUseAi = isPlatformAdmin || projectRole === 'owner';
-  const canManageLanguages = isPlatformAdmin || projectRole === 'owner';
+  const canManageMembers = isPlatformAdmin || isOwner;
+  const canEditCells = isPlatformAdmin || isOwner || editableLanguageSet.size > 0;
+  const canImportData = isPlatformAdmin || isOwner;
+  const canUseAi = isPlatformAdmin || isOwner;
+  const canManageLanguages = isPlatformAdmin || isOwner;
   const canDeleteProject = canManageLanguages;
-  const canManageKeys = isPlatformAdmin || projectRole === 'owner';
-  const canRenameKeys = isPlatformAdmin || projectRole === 'owner';
-  const canAddKey = isPlatformAdmin || projectRole === 'owner';
+  const canManageKeys = isPlatformAdmin || isOwner;
+  const canRenameKeys = isPlatformAdmin || isOwner;
+  const canAddKey = isPlatformAdmin || isOwner;
   const hasProjectActions = canManageMembers || canManageLanguages || canDeleteProject;
   const applyFilters = useCallback(() => {
     let filtered = translations;
@@ -159,9 +208,8 @@ export default function Home() {
     }
 
     // Apply missing/complete filter
-    const activeCodes = (visibleLanguages && visibleLanguages.size > 0)
-      ? Array.from(visibleLanguages)
-      : languages.map(l => l.code);
+    const allowedCodes = Array.from(allowedViewSet);
+    const activeCodes = visibleLanguages.size > 0 ? Array.from(visibleLanguages) : allowedCodes;
     if (filterMode === 'missing') {
       filtered = filtered.filter(row =>
         activeCodes.some(code => !(row.translations[code]?.value))
@@ -173,7 +221,7 @@ export default function Home() {
     }
 
     setFilteredTranslations(filtered);
-  }, [translations, searchQuery, filterMode, visibleLanguages, languages]);
+  }, [translations, searchQuery, filterMode, visibleLanguages, allowedViewSet]);
 
   useEffect(() => {
     applyFilters();
@@ -221,8 +269,15 @@ export default function Home() {
   }, [user, authLoading]);
 
   useEffect(() => {
-    // Initialize visible languages from localStorage (per-project), or default to 3 (EN first)
     if (!selectedProject) return;
+    const allowedCodes = Array.from(allowedViewSet);
+    if (allowedCodes.length === 0) {
+      const cleared = new Set<string>();
+      setVisibleLanguages(cleared);
+      persistVisibleLanguages(cleared);
+      return;
+    }
+
     try {
       const saved = typeof window !== 'undefined'
         ? window.localStorage.getItem(VISIBLE_KEY_PREFIX + selectedProject)
@@ -232,15 +287,25 @@ export default function Home() {
         const parsed = JSON.parse(saved) as string[];
         if (Array.isArray(parsed)) codes = parsed;
       }
-      const availableCodes = new Set(sortedLanguages.map(l => l.code));
-      const initial = codes && codes.length > 0
-        ? new Set(codes.filter(c => availableCodes.has(c)))
-        : new Set(sortedLanguages.slice(0, 2).map(l => l.code));
+
+      const filtered = codes && codes.length > 0
+        ? codes.filter(code => allowedViewSet.has(code))
+        : [];
+
+      const fallback = allowedCodes.slice(0, Math.min(allowedCodes.length, 2));
+      const initialCodes = filtered.length > 0 ? filtered : fallback;
+      const initial = new Set(initialCodes.length > 0 ? initialCodes : [allowedCodes[0]]);
       setVisibleLanguages(initial);
+      persistVisibleLanguages(initial);
     } catch {
-      setVisibleLanguages(new Set(sortedLanguages.slice(0, 2).map(l => l.code)));
+      const fallback = new Set(allowedCodes.slice(0, Math.min(allowedCodes.length, 2)));
+      if (fallback.size === 0 && allowedCodes[0]) {
+        fallback.add(allowedCodes[0]);
+      }
+      setVisibleLanguages(fallback);
+      persistVisibleLanguages(fallback);
     }
-  }, [sortedLanguages, languages, selectedProject]);
+  }, [allowedViewSet, persistVisibleLanguages, selectedProject]);
 
   useEffect(() => {
     if (!canManageLanguages) {
@@ -285,18 +350,6 @@ export default function Home() {
     }
   }, [canImportData]);
 
-  function persistVisibleLanguages(next: Set<string>) {
-    if (!selectedProject) return;
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(
-          VISIBLE_KEY_PREFIX + selectedProject,
-          JSON.stringify(Array.from(next))
-        );
-      }
-    } catch {}
-  }
-
   // duplicate applyFilters removed (now defined via useCallback above)
 
   const loadProjects = useCallback(async () => {
@@ -314,19 +367,19 @@ export default function Home() {
   const loadProjectData = useCallback(async (projectId: string) => {
     try {
       setLoading(true);
-      const [langs, trans, role] = await Promise.all([
+      const [langs, trans, membership] = await Promise.all([
         getProjectLanguages(projectId),
         getTranslationsGrid(projectId),
-        getProjectMemberRole(projectId)
+        getProjectMembership(projectId)
       ]);
 
       setLanguages(langs.map(l => ({ code: l.language_code, name: l.language_name })));
       setTranslations(trans);
-      setProjectRole(role);
+      setProjectMembership(membership);
       setLoading(false);
     } catch (err) {
       setError('Failed to load project data');
-      setProjectRole(null);
+      setProjectMembership(null);
       setLoading(false);
       console.error(err);
     }
@@ -341,7 +394,7 @@ export default function Home() {
       setTranslations([]);
       setFilteredTranslations([]);
       setSelectedProject('');
-      setProjectRole(null);
+      setProjectMembership(null);
       setVisibleLanguages(new Set());
       setLoading(false);
       return;
@@ -354,13 +407,13 @@ export default function Home() {
 
   useEffect(() => {
     if (authLoading || !user || !selectedProject) return;
-    setProjectRole(null);
+    setProjectMembership(null);
     loadProjectData(selectedProject);
   }, [authLoading, user, selectedProject, loadProjectData]);
 
   useEffect(() => {
     if (!selectedProject) {
-      setProjectRole(null);
+      setProjectMembership(null);
     }
   }, [selectedProject]);
 
@@ -843,7 +896,7 @@ export default function Home() {
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                              const all = new Set(languages.map(l => l.code));
+                              const all = new Set(Array.from(allowedViewSet));
                               setVisibleLanguages(all);
                               persistVisibleLanguages(all);
                             }}
@@ -865,6 +918,7 @@ export default function Home() {
                         <DropdownMenuSeparator />
                         <div className="max-h-80 overflow-auto">
                           {sortedLanguages
+                            .filter(lang => allowedViewSet.has(lang.code))
                             .filter(lang => {
                               const q = columnsSearch.trim().toLowerCase();
                               if (!q) return true;
@@ -881,7 +935,9 @@ export default function Home() {
                                   if (!checked) {
                                     newVisible.delete(lang.code);
                                   } else {
-                                    newVisible.add(lang.code);
+                                    if (allowedViewSet.has(lang.code)) {
+                                      newVisible.add(lang.code);
+                                    }
                                   }
                                   setVisibleLanguages(newVisible);
                                   persistVisibleLanguages(newVisible);
@@ -903,10 +959,12 @@ export default function Home() {
 
             <TranslationGrid
               data={filteredTranslations}
-              languages={sortedLanguages.filter(l => visibleLanguages.has(l.code))}
+              languages={gridLanguages}
+              projectId={selectedProject}
               onOpenAllLanguages={openAllLanguagesPanel}
               onDeletedKeys={handleDeletedKeys}
-              allowCellEditing={canEditCells}
+              allowCellEditing={canEditCells && editableLanguageSet.size > 0}
+              editableLanguages={editableLanguageSet}
               allowRowSelection={canManageKeys}
               allowRename={canRenameKeys}
               allowAiActions={canUseAi}
@@ -953,6 +1011,7 @@ export default function Home() {
           projectId={selectedProject || null}
           projectName={selectedProjectInfo?.name}
           accessToken={session?.access_token ?? null}
+          availableLanguages={sortedLanguages}
         />
       )}
       {/* Create Project Dialog */}
@@ -1509,7 +1568,7 @@ export default function Home() {
                     const refreshed = await getProjects();
                     setProjects(refreshed);
                     setSelectedProject('');
-                    setProjectRole(null);
+                    setProjectMembership(null);
                     setLanguages([]);
                     setTranslations([]);
                     setFilteredTranslations([]);

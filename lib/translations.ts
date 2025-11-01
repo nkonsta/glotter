@@ -1,6 +1,12 @@
 import { supabase, TranslationRow, Project, ProjectLanguage } from './supabase';
 
-export type ProjectRole = 'owner' | 'editor' | 'viewer';
+export type ProjectRole = 'owner' | 'member';
+
+export interface ProjectMembership {
+  role: ProjectRole;
+  viewLanguages: string[] | null;
+  editLanguages: string[] | null;
+}
 
 interface ProjectLanguageRecord {
   id: string;
@@ -77,31 +83,64 @@ export async function getTranslationsGrid(projectId: string): Promise<Translatio
 /**
  * Update a translation value
  */
-export async function updateTranslation(
-  translationId: string,
-  value: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('translations')
-    .update({ value, updated_at: new Date().toISOString() })
-    .eq('id', translationId);
+export interface SaveTranslationArgs {
+  projectId: string;
+  keyId: string;
+  projectLanguageId: string;
+  languageCode: string;
+  value: string;
+  translationId?: string | null;
+}
 
-  if (error) throw error;
+async function callTranslationSave(args: SaveTranslationArgs): Promise<string> {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) {
+    throw new Error('Not authenticated. Please sign in again.');
+  }
+
+  const response = await fetch('/api/translations/save', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(args),
+  });
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {}
+
+  if (!response.ok) {
+    const message = payload && typeof payload === 'object' && payload !== null && 'error' in payload
+      ? String((payload as { error?: unknown }).error ?? 'Failed to save translation.')
+      : 'Failed to save translation.';
+    throw new Error(message);
+  }
+
+  const translationId = payload && typeof payload === 'object' && payload !== null && 'translationId' in payload
+    ? (payload as { translationId?: unknown }).translationId
+    : null;
+
+  if (typeof translationId !== 'string' || !translationId) {
+    throw new Error('Translation save did not return an identifier.');
+  }
+
+  return translationId;
+}
+
+export async function updateTranslation(args: SaveTranslationArgs & { translationId: string }): Promise<string> {
+  return callTranslationSave(args);
 }
 
 /**
  * Create a new translation (when cell was previously empty)
  */
-export async function createTranslation(
-  keyId: string,
-  projectLanguageId: string,
-  value: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('translations')
-    .insert({ key_id: keyId, project_language_id: projectLanguageId, value });
-
-  if (error) throw error;
+export async function createTranslation(args: SaveTranslationArgs): Promise<string> {
+  return callTranslationSave(args);
 }
 
 /**
@@ -179,10 +218,10 @@ export async function getProjectLanguages(projectId: string): Promise<ProjectLan
 /**
  * Fetch the current user's role for a project.
  */
-export async function getProjectMemberRole(projectId: string): Promise<ProjectRole | null> {
+export async function getProjectMembership(projectId: string): Promise<ProjectMembership | null> {
   const { data, error } = await supabase
     .from('project_members')
-    .select('role')
+    .select('role, view_languages, edit_languages')
     .eq('project_id', projectId)
     .maybeSingle();
 
@@ -193,8 +232,25 @@ export async function getProjectMemberRole(projectId: string): Promise<ProjectRo
     throw error;
   }
 
-  const role = typeof data === 'object' && data && 'role' in data ? (data.role as string | null | undefined) : null;
-  return role === 'owner' || role === 'editor' || role === 'viewer' ? role : null;
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+
+  const { role, view_languages: viewLanguages, edit_languages: editLanguages } = data as {
+    role?: string | null;
+    view_languages?: string[] | null;
+    edit_languages?: string[] | null;
+  };
+
+  if (role !== 'owner' && role !== 'member') {
+    return null;
+  }
+
+  return {
+    role,
+    viewLanguages: Array.isArray(viewLanguages) ? viewLanguages : null,
+    editLanguages: Array.isArray(editLanguages) ? editLanguages : null,
+  };
 }
 
 /**

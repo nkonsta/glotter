@@ -20,15 +20,17 @@ import { useToast } from '@/components/ui/Toast';
 interface TranslationGridProps {
   data: TranslationRow[];
   languages: Array<{ code: string; name: string | null }>;
+  projectId: string;
   onOpenAllLanguages?: (rowIndex: number) => void;
   onDeletedKeys?: (keyIds: string[]) => void;
   allowCellEditing: boolean;
+  editableLanguages: Set<string>;
   allowRowSelection: boolean;
   allowRename: boolean;
   allowAiActions: boolean;
 }
 
-export default function TranslationGrid({ data, languages, onOpenAllLanguages, onDeletedKeys, allowCellEditing, allowRowSelection, allowRename, allowAiActions }: TranslationGridProps) {
+export default function TranslationGrid({ data, languages, projectId, onOpenAllLanguages, onDeletedKeys, allowCellEditing, editableLanguages, allowRowSelection, allowRename, allowAiActions }: TranslationGridProps) {
   const { toast } = useToast();
   const [tableData, setTableData] = useState(data);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
@@ -66,8 +68,12 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
       setEditingCell(null);
       setAiDialog({ open: false, rowIndex: null });
       setAiPreview(null);
+      return;
     }
-  }, [allowCellEditing]);
+    if (editingCell && !editableLanguages.has(editingCell.col)) {
+      setEditingCell(null);
+    }
+  }, [allowCellEditing, editableLanguages, editingCell]);
 
   const totalPages = Math.ceil(tableData.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
@@ -110,22 +116,37 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
   }, [allowRowSelection, paginatedData, startIndex]);
 
   const handleCellClick = useCallback((actualRowIndex: number, langCode: string) => {
-    if (!allowCellEditing) return;
+    if (!allowCellEditing || !editableLanguages.has(langCode)) return;
     setEditingCell({ row: actualRowIndex, col: langCode });
-  }, [allowCellEditing]);
+  }, [allowCellEditing, editableLanguages]);
 
   const handleSave = useCallback(async (actualRowIndex: number, langCode: string, newValue: string) => {
-    if (!allowCellEditing) return;
+    if (!allowCellEditing || !editableLanguages.has(langCode)) return;
     const row = tableData[actualRowIndex];
     const translation = row.translations[langCode];
 
     try {
+      let nextTranslationId = translation.translation_id;
+
       if (translation.translation_id) {
         // Update existing translation
-        await updateTranslation(translation.translation_id, newValue);
+        nextTranslationId = await updateTranslation({
+          projectId,
+          keyId: row.key_id,
+          projectLanguageId: translation.language_id,
+          languageCode: langCode.toLowerCase(),
+          translationId: translation.translation_id,
+          value: newValue,
+        });
       } else {
-        // Create new translation
-        await createTranslation(row.key_id, translation.language_id, newValue);
+        // Create new translation (or update existing if race condition)
+        nextTranslationId = await createTranslation({
+          projectId,
+          keyId: row.key_id,
+          projectLanguageId: translation.language_id,
+          languageCode: langCode.toLowerCase(),
+          value: newValue,
+        });
       }
 
       // Update local state
@@ -136,6 +157,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
           ...row.translations,
           [langCode]: {
             ...translation,
+            translation_id: nextTranslationId,
             value: newValue
           }
         }
@@ -143,10 +165,19 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
       setTableData(newData);
       setEditingCell(null);
     } catch (error) {
+      const description = error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error);
       console.error('Failed to save translation:', error);
-      toast({ title: 'Save failed', description: 'Failed to save translation. Please try again.', variant: 'error' });
+      toast({
+        title: 'Save failed',
+        description: description && description !== '{}' ? description : 'Failed to save translation. Please try again.',
+        variant: 'error',
+      });
     }
-  }, [allowCellEditing, tableData, toast]);
+  }, [allowCellEditing, editableLanguages, projectId, tableData, toast]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>, rowIndex: number, langCode: string, currentValue: string) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -265,12 +296,15 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
             const langCode = lang.code;
             const isEditing = editingCell?.row === actualRowIndex && editingCell?.col === langCode;
             const value = info.getValue() as string | null;
+            const canEditThisColumn = allowCellEditing && editableLanguages.has(langCode);
+            const readOnlyByPermission = allowCellEditing && !editableLanguages.has(langCode);
 
-            if (!allowCellEditing) {
+            if (!canEditThisColumn) {
               const isMissing = !value;
               return (
                 <div className="min-w-[180px] sm:min-w-[240px] max-w-[260px] sm:max-w-[400px]">
                   <div
+                    title={readOnlyByPermission ? 'Not in your assigned languages' : undefined}
                     className={`relative p-2 text-sm rounded-md min-h-[44px] ${
                       isMissing ? 'bg-[hsl(var(--warning)/0.12)] text-warning' : ''
                     }`}
@@ -281,6 +315,11 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                       </span>
                     ) : (
                       <div className="text-foreground flex-1">{value}</div>
+                    )}
+                    {readOnlyByPermission && (
+                      <span className="absolute bottom-2 right-2 text-[10px] uppercase tracking-wide text-muted">
+                        View only
+                      </span>
                     )}
                   </div>
                 </div>
@@ -299,7 +338,9 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                 ) : (
                   <div
                     onClick={() => {
-                      handleCellClick(actualRowIndex, langCode);
+                      if (canEditThisColumn) {
+                        handleCellClick(actualRowIndex, langCode);
+                      }
                     }}
                     className={`relative p-2 text-sm cursor-pointer rounded-md transition-all duration-150 ease-out min-h-[44px] ${
                       !value
@@ -335,6 +376,7 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
     handleCellClick,
     handleKeyDown,
     handleSave,
+    editableLanguages,
     languages,
     onOpenAllLanguages,
     paginatedData.length,
@@ -902,21 +944,32 @@ export default function TranslationGrid({ data, languages, onOpenAllLanguages, o
                       const idx = aiDialog.rowIndex;
                       // Reuse bulk upsert via fetch to app layer
                       // Directly call update/create to minimize changes:
-                      for (const [lang, val] of Object.entries(aiPreview)) {
-                        const t = tableData[idx].translations[lang];
-                        if (t.translation_id) {
-                          await updateTranslation(t.translation_id, val);
-                        } else {
-                          await createTranslation(tableData[idx].key_id, t.language_id, val);
-                        }
-                      }
-                      // Local update
                       const newData = [...tableData];
                       const row = newData[idx];
+
                       for (const [lang, val] of Object.entries(aiPreview)) {
-                        const existing = row.translations[lang];
-                        if (existing) {
-                          row.translations[lang] = { ...existing, value: val };
+                        const target = row.translations[lang];
+                        if (!target) continue;
+
+                        if (target.translation_id) {
+                          const updatedId = await updateTranslation({
+                            projectId,
+                            keyId: row.key_id,
+                            projectLanguageId: target.language_id,
+                            languageCode: lang.toLowerCase(),
+                            translationId: target.translation_id,
+                            value: val,
+                          });
+                          row.translations[lang] = { ...target, translation_id: updatedId, value: val };
+                        } else {
+                          const newId = await createTranslation({
+                            projectId,
+                            keyId: row.key_id,
+                            projectLanguageId: target.language_id,
+                            languageCode: lang.toLowerCase(),
+                            value: val,
+                          });
+                          row.translations[lang] = { ...target, translation_id: newId, value: val };
                         }
                       }
                       setTableData(newData);
