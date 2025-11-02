@@ -14,7 +14,7 @@ jobs:
           echo "Pinging Supabase to prevent project pause..."
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            https://<your-project-ref>.supabase.co/rest/v1/)
+            https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/rest/v1/)
           
           echo "HTTP status: $STATUS"
 
