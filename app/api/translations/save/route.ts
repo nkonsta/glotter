@@ -10,6 +10,34 @@ type SaveTranslationPayload = {
   value: string;
 };
 
+function isSaveTranslationPayload(payload: unknown): payload is SaveTranslationPayload {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+
+  const candidate = payload as Partial<Record<keyof SaveTranslationPayload, unknown>>;
+
+  const hasRequiredStrings =
+    typeof candidate.projectId === 'string' &&
+    typeof candidate.keyId === 'string' &&
+    typeof candidate.projectLanguageId === 'string' &&
+    typeof candidate.value === 'string';
+
+  if (!hasRequiredStrings) {
+    return false;
+  }
+
+  const hasValidOptionalFields =
+    (candidate.languageCode === undefined ||
+      candidate.languageCode === null ||
+      typeof candidate.languageCode === 'string') &&
+    (candidate.translationId === undefined ||
+      candidate.translationId === null ||
+      typeof candidate.translationId === 'string');
+
+  return hasValidOptionalFields;
+}
+
 function unauthorized(message: string, status = 401) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -35,19 +63,12 @@ export async function POST(req: Request) {
 
   let payload: unknown = null;
   try {
-    payload = (await req.json()) as SaveTranslationPayload;
+    payload = await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400 });
   }
 
-  if (
-    !payload ||
-    typeof payload !== 'object' ||
-    typeof payload.projectId !== 'string' ||
-    typeof payload.keyId !== 'string' ||
-    typeof payload.projectLanguageId !== 'string' ||
-    typeof payload.value !== 'string'
-  ) {
+  if (!isSaveTranslationPayload(payload)) {
     return NextResponse.json({ error: 'projectId, keyId, projectLanguageId, and value are required.' }, { status: 400 });
   }
 
