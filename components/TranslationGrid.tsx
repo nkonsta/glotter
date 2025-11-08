@@ -238,7 +238,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
         const actualRowIndex = startIndex + displayRowIndex;
         const keyValue = info.getValue() as string;
         return (
-          <div className="group/ky flex items-center justify-between gap-2 min-w-[140px] sm:min-w-[180px] max-w-[220px] sm:max-w-[240px]">
+          <div className="group/ky flex items-center justify-between gap-2 min-w-[120px] sm:min-w-[180px] max-w-[200px] sm:max-w-[240px]">
             <div className="font-medium text-foreground tracking-tight text-sm break-words">
               {keyValue}
             </div>
@@ -302,7 +302,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
             if (!canEditThisColumn) {
               const isMissing = !value;
               return (
-                <div className="min-w-[180px] sm:min-w-[240px] max-w-[260px] sm:max-w-[400px]">
+                <div className="min-w-[160px] sm:min-w-[240px] max-w-[240px] sm:max-w-[400px]">
                   <div
                     title={readOnlyByPermission ? 'Not in your assigned languages' : undefined}
                     className={`relative p-2 text-sm rounded-md min-h-[44px] ${
@@ -327,7 +327,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
             }
 
             return (
-              <div className="min-w-[180px] sm:min-w-[240px] max-w-[260px] sm:max-w-[400px]">
+              <div className="min-w-[160px] sm:min-w-[240px] max-w-[240px] sm:max-w-[400px]">
                 {isEditing ? (
                   <CellEditor
                     key={`${actualRowIndex}-${langCode}`}
@@ -597,7 +597,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
                         style={leftValue ? { left: leftValue } : undefined}
                       >
                         {isKeyColumn ? (
-                          <div className="group/ky flex items-center justify-between gap-2 min-w-[140px] sm:min-w-[180px] max-w-[220px] sm:max-w-[240px]">
+                          <div className="group/ky flex items-center justify-between gap-2 min-w-[120px] sm:min-w-[180px] max-w-[200px] sm:max-w-[240px]">
                             <div className="font-medium text-foreground tracking-tight text-sm break-words">
                               {row.getValue('key') as string}
                             </div>

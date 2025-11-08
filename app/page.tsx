@@ -552,17 +552,17 @@ export default function Home() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="bg-surface-elevated/95 backdrop-blur border-b border-border/60 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:h-14">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 w-full sm:w-auto">
             <div className="flex items-center gap-2">
               <Image src="/chinese.svg" alt="Glotter" width={28} height={28} className="h-7 w-7" priority />
               <h1 className="text-lg font-semibold tracking-tight">Glotter</h1>
             </div>
             {projects.length > 0 && (
-              <>
-                <div className="w-px h-4 bg-border"></div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2 w-full sm:w-auto">
+                <div className="hidden sm:block w-px h-4 bg-border"></div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="pl-2 pr-1.5 py-1 gap-1.5">
+                    <Button variant="ghost" className="pl-2 pr-1.5 py-1 gap-1.5 w-full sm:w-auto justify-between sm:justify-start">
                       <span>
                         {selectedProject
                           ? projects.find(p => p.id === selectedProject)?.name
@@ -573,7 +573,7 @@ export default function Home() {
                       </svg>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56">
+                  <DropdownMenuContent className="w-56 max-w-[calc(100vw-2rem)]">
                     <DropdownMenuItem onClick={() => setIsCreateProjectOpen(true)} className="font-medium">
                       + New project…
                     </DropdownMenuItem>
@@ -597,7 +597,7 @@ export default function Home() {
                 {selectedProject && hasProjectActions && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="px-2 py-1" aria-label="Project actions">
+                      <Button variant="ghost" className="px-2 py-1 w-full sm:w-auto justify-between sm:justify-center" aria-label="Project actions">
                         <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                           <circle cx="5" cy="12" r="2" />
                           <circle cx="12" cy="12" r="2" />
@@ -605,7 +605,7 @@ export default function Home() {
                         </svg>
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-48" align="start">
+                    <DropdownMenuContent className="w-48 max-w-[calc(100vw-2rem)]" align="start">
                       {canManageMembers && (
                         <>
                           <DropdownMenuItem onClick={() => setIsManageMembersOpen(true)}>Manage members…</DropdownMenuItem>
@@ -621,19 +621,36 @@ export default function Home() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
-              </>
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <ThemeToggle />
-            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-muted max-w-[220px]">
-              <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 10-8 0 4 4 0 008 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 21a7 7 0 0116 0" />
-              </svg>
-              <span className="truncate">{user.email}</span>
+          <div className="flex flex-col gap-2 w-full sm:w-auto sm:flex-row sm:items-center sm:gap-2 sm:justify-end">
+            <div className="flex items-center justify-between gap-2">
+              <ThemeToggle />
+              <div className="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-muted max-w-[220px]">
+                <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 10-8 0 4 4 0 008 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 21a7 7 0 0116 0" />
+                </svg>
+                <span className="truncate">{user.email}</span>
+              </div>
             </div>
-            <Button variant="outline" size="sm" onClick={handleSignOut} disabled={signingOut}>
+            <div className="flex flex-col items-end gap-1 sm:hidden text-xs text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <svg className="h-3.5 w-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 10-8 0 4 4 0 008 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 21a7 7 0 0116 0" />
+                </svg>
+                <span className="truncate max-w-[180px]">{user.email}</span>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto justify-center"
+              onClick={handleSignOut}
+              disabled={signingOut}
+            >
               {signingOut ? (
                 <span className="inline-flex items-center gap-2">
                   <Spinner size={14} />
@@ -647,7 +664,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <div aria-live="polite" aria-atomic="true" className="sr-only">{liveMessage}</div>
         {loading ? (
           <div className="space-y-4">
@@ -655,7 +672,7 @@ export default function Home() {
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-6">
                   <Skeleton className="h-6 w-16" />
-                  <div className="h-6 w-px bg-border"></div>
+                  <div className="hidden sm:block h-6 w-px bg-border"></div>
                   <Skeleton className="h-6 w-16" />
                 </div>
                 <Skeleton className="h-9 w-28" />
@@ -696,21 +713,21 @@ export default function Home() {
         ) : (
           <div className="space-y-4">
             <div className="bg-surface-elevated px-4 sm:px-6 py-6 rounded-xl shadow-card border border-border">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
-                <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between mb-6">
+                <div className="grid grid-cols-2 gap-3 w-full sm:w-auto sm:flex sm:flex-wrap sm:items-center sm:gap-4">
                   <div className="text-sm font-medium text-muted">
                     <span className="text-lg font-bold">{translations.length}</span>
                     <span className="ml-1.5 text-muted">keys</span>
                   </div>
-                  <div className="h-6 w-px bg-border"></div>
+                  <div className="hidden sm:block h-6 w-px bg-border"></div>
                   <div className="text-sm font-medium text-muted">
                     <span className="text-lg font-bold">{languages.length}</span>
                     <span className="ml-1.5 text-muted">languages</span>
                   </div>
                   {filterMode !== 'all' && (
                     <>
-                      <div className="h-6 w-px bg-border"></div>
-                      <div className="text-sm font-medium text-muted">
+                      <div className="hidden sm:block h-6 w-px bg-border"></div>
+                      <div className="text-sm font-medium text-muted col-span-2 sm:col-auto">
                         <span className="text-lg font-bold text-warning">{filteredTranslations.length}</span>
                         <span className="ml-1.5 text-muted">filtered</span>
                       </div>
@@ -867,7 +884,7 @@ export default function Home() {
                       { value: 'missing', label: 'Missing' },
                       { value: 'complete', label: 'Complete' },
                     ]}
-                    className="w-full sm:w-auto"
+                    className="w-full"
                   />
 
                   {sortedLanguages.length > 0 && (
@@ -880,7 +897,7 @@ export default function Home() {
                           Columns
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-72">
+                      <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-y-auto">
                         <DropdownMenuLabel className="text-muted-foreground">Languages</DropdownMenuLabel>
                         <div className="px-2 py-1.5">
                           <input
@@ -891,7 +908,7 @@ export default function Home() {
                           />
                         </div>
                         <DropdownMenuSeparator />
-                        <div className="px-2 pb-1 grid grid-cols-2 gap-2">
+                        <div className="px-2 pb-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <Button
                             variant="outline"
                             size="sm"
