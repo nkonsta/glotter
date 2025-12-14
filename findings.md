@@ -34,5 +34,7 @@
 - Implement embedding approach in `lib/translations.ts` for `getTranslationsGrid`, or use chunked fallback.
 - Apply minor cleanups above.
 - Re-run `npm run dev` and validate translations grid loads and edits persist.
+- Track the Next.js security update from 2025-12-11 (CVE-2025-55183/55184/67779). We've bumped `next`/`eslint-config-next` to 15.5.9, the patched release called out in the advisory: https://nextjs.org/blog/security-update-2025-12-11.
+- React and React DOM are already pinned to 19.1.0, which satisfies the Next.js 15.5.9 peer range. No newer compatible versions were identified locally (registry access is blocked), but reinstall dependencies to ensure `node_modules` picks up the 15.5.9 build artifacts.
 
 
