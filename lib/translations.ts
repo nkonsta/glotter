@@ -27,29 +27,42 @@ interface TranslationKeyRecord {
 }
 
 /**
- * Fetch all translations for a project in grid format
- * Returns translation keys as rows with languages as columns
+ * Fetch translations for a project in grid format.
+ * Optionally filters to a subset of language codes to reduce payload.
  */
-export async function getTranslationsGrid(projectId: string): Promise<TranslationRow[]> {
-  // First, get all languages for this project
-  const { data: languagesData, error: langError } = await supabase
+export async function getTranslationsGrid(projectId: string, languageCodes?: string[]): Promise<TranslationRow[]> {
+  // First, get languages for this project (optionally filtered)
+  let langsQuery = supabase
     .from('project_languages')
     .select('id, language_code, language_name')
     .eq('project_id', projectId)
     .eq('is_active', true)
     .order('language_code');
 
+  if (Array.isArray(languageCodes) && languageCodes.length > 0) {
+    langsQuery = langsQuery.in('language_code', languageCodes);
+  }
+
+  const { data: languagesData, error: langError } = await langsQuery;
+
   if (langError) throw langError;
   const languages = (languagesData ?? []) as ProjectLanguageRecord[];
   if (languages.length === 0) return [];
 
-  // Get all translation keys with their translations using a single query with embedding
-  const { data: keysData, error: keysError } = await supabase
+  const languageIds = languages.map(lang => lang.id);
+
+  // Get translation keys with their translations using a single query with embedding
+  let keysQuery = supabase
     .from('translation_keys')
     .select('id, key, translations(id, project_language_id, value)')
     .eq('project_id', projectId)
     .order('key');
 
+  if (languageIds.length > 0) {
+    keysQuery = keysQuery.in('translations.project_language_id', languageIds);
+  }
+
+  const { data: keysData, error: keysError } = await keysQuery;
   if (keysError) throw keysError;
   const keys = (keysData ?? []) as TranslationKeyRecord[];
   if (keys.length === 0) return [];
