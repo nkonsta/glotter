@@ -109,6 +109,7 @@ export default function Home() {
   const [exportSelected, setExportSelected] = useState<Set<string>>(new Set());
   const [exportFallbackLang, setExportFallbackLang] = useState<string>('en');
   const [fallbackMissingCount, setFallbackMissingCount] = useState<number>(0);
+  const [exportBusy, setExportBusy] = useState(false);
   // AI translate dialog
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [aiSourceLang, setAiSourceLang] = useState<string>('en');
@@ -367,16 +368,15 @@ export default function Home() {
   const loadProjectData = useCallback(async (projectId: string) => {
     try {
       setLoading(true);
-      const [langs, trans, membership] = await Promise.all([
+      const [langs, membership] = await Promise.all([
         getProjectLanguages(projectId),
-        getTranslationsGrid(projectId),
         getProjectMembership(projectId)
       ]);
 
       setLanguages(langs.map(l => ({ code: l.language_code, name: l.language_name })));
-      setTranslations(trans);
+      setTranslations([]);
+      setFilteredTranslations([]);
       setProjectMembership(membership);
-      setLoading(false);
     } catch (err) {
       setError('Failed to load project data');
       setProjectMembership(null);
@@ -412,10 +412,50 @@ export default function Home() {
   }, [authLoading, user, selectedProject, loadProjectData]);
 
   useEffect(() => {
+    if (!selectedProject) return;
+    if (languages.length === 0) return;
+    if (visibleLanguages.size === 0) return;
+    let isMounted = true;
+
+    const loadTranslations = async () => {
+      try {
+        setLoading(true);
+        const codes = Array.from(visibleLanguages);
+        const trans = await getTranslationsGrid(selectedProject, codes);
+        if (!isMounted) return;
+        setTranslations(trans);
+        setLoading(false);
+      } catch (err) {
+        if (!isMounted) return;
+        setError('Failed to load translations');
+        setLoading(false);
+        console.error(err);
+      }
+    };
+
+    void loadTranslations();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedProject, languages, visibleLanguages]);
+
+  useEffect(() => {
     if (!selectedProject) {
       setProjectMembership(null);
     }
   }, [selectedProject]);
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (languages.length === 0) {
+      setLoading(false);
+      return;
+    }
+    if (visibleLanguages.size > 0) return;
+    if (allowedViewSet.size === 0) {
+      setLoading(false);
+    }
+  }, [selectedProject, languages, visibleLanguages, allowedViewSet]);
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -431,11 +471,21 @@ export default function Home() {
     }
   }, [signOutUser, toast]);
 
-  function exportLanguage(langCode: string, fallbackLang: string) {
+  async function getExportRows(selectedCodes: string[], fallbackLang: string): Promise<TranslationRow[]> {
+    if (!selectedProject) return translations;
+    const exportCodes = Array.from(new Set([...selectedCodes, fallbackLang]));
+    const hasAll = translations.length > 0
+      && exportCodes.every(code => Object.prototype.hasOwnProperty.call(translations[0].translations, code));
+    if (hasAll) return translations;
+    return getTranslationsGrid(selectedProject, exportCodes);
+  }
+
+  async function exportLanguage(langCode: string, fallbackLang: string) {
+    const rows = await getExportRows([langCode], fallbackLang);
     // Build flat maps for target and fallback
     const fallbackMap: Record<string, string | null> = {};
     const targetMap: Record<string, string | null> = {};
-    translations.forEach(row => {
+    rows.forEach(row => {
       fallbackMap[row.key] = row.translations[fallbackLang]?.value ?? null;
       targetMap[row.key] = row.translations[langCode]?.value ?? null;
     });
@@ -467,16 +517,17 @@ export default function Home() {
 
   async function exportAllLanguagesZip(selectedCodes: string[], fallbackLang: string) {
     try {
+      const rows = await getExportRows(selectedCodes, fallbackLang);
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
 
       // Precompute fallback map
       const fbMap: Record<string, string | null> = {};
-      translations.forEach(row => { fbMap[row.key] = row.translations[fallbackLang]?.value ?? null; });
+      rows.forEach(row => { fbMap[row.key] = row.translations[fallbackLang]?.value ?? null; });
 
       for (const code of selectedCodes) {
         const nested: Record<string, unknown> = {};
-        translations.forEach(row => {
+        rows.forEach(row => {
           const val = row.translations[code]?.value ?? fbMap[row.key];
           if (val != null) setNested(nested, row.key, val);
         });
@@ -516,6 +567,32 @@ export default function Home() {
     setPanelKeyIndex(rowIndex);
     setPanelOpen(true);
   }
+
+  const updateFallbackMissingCount = useCallback(async (langCode: string) => {
+    if (!selectedProject) {
+      setFallbackMissingCount(0);
+      return;
+    }
+    const hasLang = translations.length > 0
+      && Object.prototype.hasOwnProperty.call(translations[0].translations, langCode);
+    let rows = translations;
+    if (!hasLang) {
+      try {
+        rows = await getTranslationsGrid(selectedProject, [langCode]);
+      } catch (err) {
+        console.error(err);
+        setFallbackMissingCount(0);
+        return;
+      }
+    }
+    const missing = rows.reduce((acc, row) => acc + ((row.translations[langCode]?.value ?? null) == null ? 1 : 0), 0);
+    setFallbackMissingCount(missing);
+  }, [selectedProject, translations]);
+
+  useEffect(() => {
+    if (!isExportOpen) return;
+    void updateFallbackMissingCount(exportFallbackLang);
+  }, [isExportOpen, exportFallbackLang, updateFallbackMissingCount]);
 
   function handleDeletedKeys(keyIds: string[]) {
     if (!keyIds || keyIds.length === 0) return;
@@ -1618,8 +1695,7 @@ export default function Home() {
                   {sortedLanguages.map(l => (
                     <DropdownMenuItem key={l.code} onClick={() => {
                       setExportFallbackLang(l.code);
-                      const missing = translations.reduce((acc, row) => acc + ((row.translations[l.code]?.value ?? null) == null ? 1 : 0), 0);
-                      setFallbackMissingCount(missing);
+                      void updateFallbackMissingCount(l.code);
                     }}>
                       <span className="font-medium">{l.code.toUpperCase()}</span>
                       {l.name && <span className="text-xs text-muted ml-2">({l.name})</span>}
@@ -1671,27 +1747,30 @@ export default function Home() {
               })}
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => setIsExportOpen(false)} disabled={exportBusy}>Cancel</Button>
               <Button
                 onClick={async () => {
                   const selected = Array.from(exportSelected);
                   if (selected.length === 0) return;
-                  if (selected.length === 1) {
-                    exportLanguage(selected[0], exportFallbackLang);
-                  } else {
-                    // zip only selected languages
-                    try {
+                  try {
+                    setExportBusy(true);
+                    if (selected.length === 1) {
+                      await exportLanguage(selected[0], exportFallbackLang);
+                    } else {
+                      // zip only selected languages
                       await exportAllLanguagesZip(selected, exportFallbackLang);
-                    } catch (e) {
-                      console.error(e);
-                      toast({ title: 'Export failed', description: 'Failed to create ZIP export.', variant: 'error' });
                     }
+                    setIsExportOpen(false);
+                  } catch (e) {
+                    console.error(e);
+                    toast({ title: 'Export failed', description: 'Failed to create ZIP export.', variant: 'error' });
+                  } finally {
+                    setExportBusy(false);
                   }
-                  setIsExportOpen(false);
                 }}
-                disabled={exportSelected.size === 0}
+                disabled={exportSelected.size === 0 || exportBusy}
               >
-                Export
+                {exportBusy ? 'Exporting…' : 'Export'}
               </Button>
             </div>
           </div>
