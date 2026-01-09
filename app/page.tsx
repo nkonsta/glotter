@@ -31,6 +31,8 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { supabase } from '@/lib/supabase';
 import type { AiSuggestedTranslation, AiTranslateResponseBody } from '@/lib/ai/types';
 
+const FALLBACK_NONE = '__none__';
+
 interface Project {
   id: string;
   name: string;
@@ -473,7 +475,10 @@ export default function Home() {
 
   async function getExportRows(selectedCodes: string[], fallbackLang: string): Promise<TranslationRow[]> {
     if (!selectedProject) return translations;
-    const exportCodes = Array.from(new Set([...selectedCodes, fallbackLang]));
+    const resolvedFallback = fallbackLang === FALLBACK_NONE ? null : fallbackLang;
+    const exportCodes = resolvedFallback
+      ? Array.from(new Set([...selectedCodes, resolvedFallback]))
+      : selectedCodes;
     const hasAll = translations.length > 0
       && exportCodes.every(code => Object.prototype.hasOwnProperty.call(translations[0].translations, code));
     if (hasAll) return translations;
@@ -482,19 +487,13 @@ export default function Home() {
 
   async function exportLanguage(langCode: string, fallbackLang: string) {
     const rows = await getExportRows([langCode], fallbackLang);
-    // Build flat maps for target and fallback
-    const fallbackMap: Record<string, string | null> = {};
-    const targetMap: Record<string, string | null> = {};
-    rows.forEach(row => {
-      fallbackMap[row.key] = row.translations[fallbackLang]?.value ?? null;
-      targetMap[row.key] = row.translations[langCode]?.value ?? null;
-    });
-
-    // Reconstruct nested with fallback
+    const resolvedFallback = fallbackLang === FALLBACK_NONE ? null : fallbackLang;
     const nested: Record<string, unknown> = {};
-    Object.keys(targetMap).forEach(k => {
-      const val = targetMap[k] ?? fallbackMap[k];
-      if (val != null) setNested(nested, k, val);
+    rows.forEach(row => {
+      const targetValue = row.translations[langCode]?.value ?? null;
+      const fallbackValue = resolvedFallback ? row.translations[resolvedFallback]?.value ?? null : null;
+      const value = targetValue ?? fallbackValue;
+      if (value != null) setNested(nested, row.key, value);
     });
 
     // ASCII-only
@@ -520,15 +519,18 @@ export default function Home() {
       const rows = await getExportRows(selectedCodes, fallbackLang);
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
+      const resolvedFallback = fallbackLang === FALLBACK_NONE ? null : fallbackLang;
 
       // Precompute fallback map
       const fbMap: Record<string, string | null> = {};
-      rows.forEach(row => { fbMap[row.key] = row.translations[fallbackLang]?.value ?? null; });
+      if (resolvedFallback) {
+        rows.forEach(row => { fbMap[row.key] = row.translations[resolvedFallback]?.value ?? null; });
+      }
 
       for (const code of selectedCodes) {
         const nested: Record<string, unknown> = {};
         rows.forEach(row => {
-          const val = row.translations[code]?.value ?? fbMap[row.key];
+          const val = row.translations[code]?.value ?? (resolvedFallback ? fbMap[row.key] : null);
           if (val != null) setNested(nested, row.key, val);
         });
         // ASCII-only export: escape non-ASCII to \uXXXX
@@ -569,6 +571,10 @@ export default function Home() {
   }
 
   const updateFallbackMissingCount = useCallback(async (langCode: string) => {
+    if (langCode === FALLBACK_NONE) {
+      setFallbackMissingCount(0);
+      return;
+    }
     if (!selectedProject) {
       setFallbackMissingCount(0);
       return;
@@ -1684,7 +1690,9 @@ export default function Home() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="w-full justify-between">
                     <span className="truncate">
-                      {exportFallbackLang.toUpperCase()} {sortedLanguages.find(l => l.code === exportFallbackLang)?.name ? `(${sortedLanguages.find(l => l.code === exportFallbackLang)?.name})` : ''}
+                      {exportFallbackLang === FALLBACK_NONE
+                        ? 'No fallback (skip missing)'
+                        : `${exportFallbackLang.toUpperCase()}${sortedLanguages.find(l => l.code === exportFallbackLang)?.name ? ` (${sortedLanguages.find(l => l.code === exportFallbackLang)?.name})` : ''}`}
                     </span>
                     <svg className="h-4 w-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1692,6 +1700,15 @@ export default function Home() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="max-h-64 overflow-auto w-64">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setExportFallbackLang(FALLBACK_NONE);
+                      setFallbackMissingCount(0);
+                    }}
+                  >
+                    <span className="font-medium">No fallback</span>
+                    <span className="text-xs text-muted ml-2">(skip missing)</span>
+                  </DropdownMenuItem>
                   {sortedLanguages.map(l => (
                     <DropdownMenuItem key={l.code} onClick={() => {
                       setExportFallbackLang(l.code);
@@ -1703,7 +1720,7 @@ export default function Home() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              {fallbackMissingCount > 0 && (
+              {exportFallbackLang !== FALLBACK_NONE && fallbackMissingCount > 0 && (
                 <p className="mt-1 text-xs text-warning">Warning: {fallbackMissingCount} keys are missing values in the selected fallback language.</p>
               )}
     </div>
