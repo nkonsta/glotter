@@ -426,7 +426,7 @@ export default function ManageProjectMembersDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Manage project members</DialogTitle>
             <DialogDescription>
@@ -630,7 +630,7 @@ export default function ManageProjectMembersDialog({
           setEditEditSelection(new Set());
         }
       }}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit member access</DialogTitle>
             <DialogDescription>
