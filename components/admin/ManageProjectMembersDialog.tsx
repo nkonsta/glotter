@@ -73,6 +73,8 @@ export default function ManageProjectMembersDialog({
   const [editSelection, setEditSelection] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<MemberRecord | null>(null);
   const [editingMember, setEditingMember] = useState<MemberRecord | null>(null);
   const [editRole, setEditRole] = useState<ProjectRole>('member');
   const [editViewSelection, setEditViewSelection] = useState<Set<string>>(new Set());
@@ -423,6 +425,48 @@ export default function ManageProjectMembersDialog({
     }
   }, [editingMember, projectId, accessToken, editRole, editViewSelection, editEditSelection, toast, onOpenChange, defaultViewSeed, fetchMembers]);
 
+  const handleRemoveMember = useCallback(async (member: MemberRecord) => {
+    if (!projectId || !accessToken) return;
+
+    setRemovingMemberId(member.id);
+    try {
+      const response = await fetch(
+        `/api/admin/project-members?projectId=${encodeURIComponent(projectId)}&memberId=${encodeURIComponent(member.id)}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const description = typeof payload.error === 'string' ? payload.error : 'Could not remove member.';
+        toast({ title: 'Failed to remove member', description, variant: 'error' });
+        if (response.status === 401 || response.status === 403) {
+          onOpenChange(false);
+        }
+        return;
+      }
+
+      setMembers((prev) => prev.filter((m) => m.id !== member.id));
+      toast({
+        title: 'Member removed',
+        description: `${member.email ?? 'Member'} has been removed from this project.`,
+        variant: 'success',
+      });
+      setConfirmRemoveMember(null);
+    } catch (error) {
+      console.error('Failed to remove project member', error);
+      toast({
+        title: 'Failed to remove member',
+        description: error instanceof Error ? error.message : 'Unexpected error occurred.',
+        variant: 'error',
+      });
+    } finally {
+      setRemovingMemberId(null);
+    }
+  }, [projectId, accessToken, toast, onOpenChange]);
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -598,21 +642,38 @@ export default function ManageProjectMembersDialog({
                           <span>Never signed in</span>
                         )}
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => startEditingMember(member)}
-                        disabled={updatingMemberId === member.id}
-                      >
-                        {updatingMemberId === member.id ? (
-                          <span className="inline-flex items-center gap-2">
-                            <Spinner size={14} />
-                            Updating…
-                          </span>
-                        ) : (
-                          'Edit access'
-                        )}
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => startEditingMember(member)}
+                          disabled={updatingMemberId === member.id || removingMemberId === member.id}
+                        >
+                          {updatingMemberId === member.id ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Spinner size={14} />
+                              Updating…
+                            </span>
+                          ) : (
+                            'Edit access'
+                          )}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setConfirmRemoveMember(member)}
+                          disabled={updatingMemberId === member.id || removingMemberId === member.id}
+                        >
+                          {removingMemberId === member.id ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Spinner size={14} />
+                              Removing…
+                            </span>
+                          ) : (
+                            'Remove'
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -758,6 +819,44 @@ export default function ManageProjectMembersDialog({
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(confirmRemoveMember)} onOpenChange={(nextOpen) => {
+        if (!nextOpen) setConfirmRemoveMember(null);
+      }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove <strong>{confirmRemoveMember?.email ?? 'this member'}</strong> from the project? They will immediately lose access.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmRemoveMember(null)}
+              disabled={removingMemberId === confirmRemoveMember?.id}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => confirmRemoveMember && handleRemoveMember(confirmRemoveMember)}
+              disabled={removingMemberId === confirmRemoveMember?.id}
+            >
+              {removingMemberId === confirmRemoveMember?.id ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner size={16} />
+                  Removing…
+                </span>
+              ) : (
+                'Remove member'
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>
