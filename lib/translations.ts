@@ -398,28 +398,37 @@ export async function getLanguageCodeToIdMap(projectId: string): Promise<Record<
 /**
  * Bulk upsert translation keys by string value
  */
-export async function bulkUpsertKeys(projectId: string, keys: string[]): Promise<void> {
+export async function bulkUpsertKeys(projectId: string, keys: string[], chunkSize: number = 1000): Promise<void> {
   const uniqueKeys = Array.from(new Set(keys)).filter(k => !!k);
   if (uniqueKeys.length === 0) return;
-  const rows = uniqueKeys.map(k => ({ project_id: projectId, key: k }));
-  const { error } = await supabase
-    .from('translation_keys')
-    .upsert(rows, { onConflict: 'project_id,key' });
-  if (error) throw error;
+  for (let i = 0; i < uniqueKeys.length; i += chunkSize) {
+    const chunk = uniqueKeys.slice(i, i + chunkSize);
+    const rows = chunk.map(k => ({ project_id: projectId, key: k }));
+    const { error } = await supabase
+      .from('translation_keys')
+      .upsert(rows, { onConflict: 'project_id,key' });
+    if (error) throw error;
+  }
 }
 
 /**
  * Return key string -> id map for a project
  */
-export async function getKeyToIdMap(projectId: string): Promise<Record<string, string>> {
-  const { data, error } = await supabase
-    .from('translation_keys')
-    .select('id, key')
-    .eq('project_id', projectId);
-  if (error) throw error;
+export async function getKeyToIdMap(projectId: string, pageSize: number = 1000): Promise<Record<string, string>> {
   const map: Record<string, string> = {};
-  const rows = (data ?? []) as Array<{ id: string; key: string }>;
-  rows.forEach((row) => { map[row.key] = row.id; });
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('translation_keys')
+      .select('id, key')
+      .eq('project_id', projectId)
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    const rows = (data ?? []) as Array<{ id: string; key: string }>;
+    rows.forEach((row) => { map[row.key] = row.id; });
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
   return map;
 }
 
@@ -482,17 +491,12 @@ export async function deleteMissingTranslations(
   if (langErr) throw langErr;
   if (!langRow) return 0;
 
-  // Get key ids to keep
-  const { data: keyRows, error: keyErr } = await supabase
-    .from('translation_keys')
-    .select('id, key')
-    .eq('project_id', projectId);
-  if (keyErr) throw keyErr;
+  // Get key ids to keep (paginated to handle projects with >1000 keys)
+  const keyToId = await getKeyToIdMap(projectId);
   const keepSet = new Set(keepKeys);
-  const keyRecords = (keyRows ?? []) as Array<{ id: string; key: string }>;
-  const toDeleteKeyIds = keyRecords
-    .filter(k => !keepSet.has(k.key))
-    .map(k => k.id);
+  const toDeleteKeyIds = Object.entries(keyToId)
+    .filter(([key]) => !keepSet.has(key))
+    .map(([, id]) => id);
   if (toDeleteKeyIds.length === 0) return 0;
 
   let total = 0;

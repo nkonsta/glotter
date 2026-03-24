@@ -1871,12 +1871,12 @@ export default function Home() {
                       // Support {key:value} (language-specific) and {key:{lang:value}} / [{key,lang,value}] later
                       let map: Record<string, string | null> = {};
                       if (json && typeof json === 'object' && !Array.isArray(json)) {
-                        // Decode any \uXXXX in string leaves
-                        const decodedObj: Record<string, unknown> = {};
-                        Object.entries(json as Record<string, unknown>).forEach(([k, v]) => {
-                          decodedObj[k] = typeof v === 'string' ? decodeUnicodeEscapes(v) : v;
-                        });
-                        map = toKeyToValueMap(decodedObj);
+                        // Flatten then decode \uXXXX in all string leaves (including nested)
+                        const flat = toKeyToValueMap(json as Record<string, unknown>);
+                        for (const k of Object.keys(flat)) {
+                          if (typeof flat[k] === 'string') flat[k] = decodeUnicodeEscapes(flat[k]!);
+                        }
+                        map = flat;
                       } else if (Array.isArray(json)) {
                         const tmp: Record<string, unknown> = {};
                         const targetLangLower = importTargetLang.toLowerCase();
