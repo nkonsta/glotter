@@ -171,21 +171,6 @@ export async function createTranslationKey(projectId: string, key: string): Prom
 }
 
 /**
- * Rename an existing translation key
- */
-export async function renameTranslationKey(
-  keyId: string,
-  newKey: string
-): Promise<void> {
-  const { error } = await supabase
-    .from('translation_keys')
-    .update({ key: newKey })
-    .eq('id', keyId);
-
-  if (error) throw error;
-}
-
-/**
  * Delete translation keys by id (cascades to translations via FK)
  */
 export async function deleteTranslationKeys(

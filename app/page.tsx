@@ -193,7 +193,6 @@ export default function Home() {
   const canManageLanguages = isPlatformAdmin || isOwner;
   const canDeleteProject = canManageLanguages;
   const canManageKeys = isPlatformAdmin || isOwner;
-  const canRenameKeys = isPlatformAdmin || isOwner;
   const canAddKey = isPlatformAdmin || isOwner;
   const hasProjectActions = canManageMembers || canManageLanguages || canDeleteProject;
   const applyFilters = useCallback(() => {
@@ -1049,7 +1048,6 @@ export default function Home() {
               allowCellEditing={canEditCells && editableLanguageSet.size > 0}
               editableLanguages={editableLanguageSet}
               allowRowSelection={canManageKeys}
-              allowRename={canRenameKeys}
               allowAiActions={canUseAi}
             />
 

@@ -10,7 +10,7 @@ import {
   ColumnDef,
 } from '@tanstack/react-table';
 import { TranslationRow } from '@/lib/supabase';
-import { updateTranslation, createTranslation, renameTranslationKey, deleteTranslationKeys } from '@/lib/translations';
+import { updateTranslation, createTranslation, deleteTranslationKeys } from '@/lib/translations';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/Tooltip';
@@ -26,11 +26,10 @@ interface TranslationGridProps {
   allowCellEditing: boolean;
   editableLanguages: Set<string>;
   allowRowSelection: boolean;
-  allowRename: boolean;
   allowAiActions: boolean;
 }
 
-export default function TranslationGrid({ data, languages, projectId, onOpenAllLanguages, onDeletedKeys, allowCellEditing, editableLanguages, allowRowSelection, allowRename, allowAiActions }: TranslationGridProps) {
+export default function TranslationGrid({ data, languages, projectId, onOpenAllLanguages, onDeletedKeys, allowCellEditing, editableLanguages, allowRowSelection, allowAiActions }: TranslationGridProps) {
   const { toast } = useToast();
   const [tableData, setTableData] = useState(data);
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
@@ -40,7 +39,6 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
   const [showPageSizeMenu, setShowPageSizeMenu] = useState(false);
   // Keyboard nav removed; keep simple click-to-edit
   // Shift-click range selection removed
-  const [renameDialog, setRenameDialog] = useState<{ open: boolean; rowIndex: number | null; value: string }>({ open: false, rowIndex: null, value: '' });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // Per-row AI dialog state
@@ -56,12 +54,6 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
       setDeleteDialogOpen(false);
     }
   }, [allowRowSelection]);
-
-  useEffect(() => {
-    if (!allowRename) {
-      setRenameDialog({ open: false, rowIndex: null, value: '' });
-    }
-  }, [allowRename]);
 
   useEffect(() => {
     if (!allowCellEditing) {
@@ -190,12 +182,6 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
 
   const columnHelper = createColumnHelper<TranslationRow>();
 
-  const openRename = useCallback((rowIndex: number) => {
-    if (!allowRename) return;
-    const currentKey = tableData[rowIndex]?.key || '';
-    setRenameDialog({ open: true, rowIndex, value: currentKey });
-  }, [allowRename, tableData]);
-
   const canUseAiRow = allowAiActions;
 
   const columns = useMemo<ColumnDef<TranslationRow, unknown>[]>(() => {
@@ -242,19 +228,8 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
             <div className="font-medium text-foreground tracking-tight text-sm break-words">
               {keyValue}
             </div>
-            {(allowRename || onOpenAllLanguages) && (
+            {onOpenAllLanguages && (
               <div className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
-                {allowRename && (
-                  <button
-                    className="text-muted hover:text-foreground transition-colors"
-                    onClick={() => openRename(actualRowIndex)}
-                    aria-label="Rename key"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-                )}
                 {onOpenAllLanguages && (
                   <TooltipProvider>
                     <Tooltip>
@@ -368,7 +343,6 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
     return colDefs;
   }, [
     allowCellEditing,
-    allowRename,
     allowRowSelection,
     columnHelper,
     editingCell?.col,
@@ -385,7 +359,6 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
     tableData,
     toggleAllRows,
     toggleRowSelection,
-    openRename,
   ]);
 
   const table = useReactTable({
@@ -435,39 +408,6 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
       console.error(e);
       setDeleteDialogOpen(false);
       toast({ title: 'Delete failed', description: 'Failed to delete selected keys', variant: 'error' });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function confirmRename() {
-    if (!allowRename) {
-      setRenameDialog({ open: false, rowIndex: null, value: '' });
-      return;
-    }
-    if (renameDialog.rowIndex == null) return;
-    const row = tableData[renameDialog.rowIndex];
-    const newKey = renameDialog.value.trim();
-    if (!newKey || newKey === row.key) {
-      setRenameDialog({ open: false, rowIndex: null, value: '' });
-      return;
-    }
-    // Validate: no duplicates
-    if (tableData.some((r, i) => i !== renameDialog.rowIndex && r.key === newKey)) {
-      alert('A key with that name already exists.');
-      return;
-    }
-    try {
-      setSubmitting(true);
-      await renameTranslationKey(row.key_id, newKey);
-      const next = [...tableData];
-      next[renameDialog.rowIndex] = { ...row, key: newKey };
-      setTableData(next);
-      setRenameDialog({ open: false, rowIndex: null, value: '' });
-      toast({ title: 'Key renamed', description: 'The key name has been updated.', variant: 'success' });
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Rename failed', description: 'Failed to rename key', variant: 'error' });
     } finally {
       setSubmitting(false);
     }
@@ -601,19 +541,8 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
                             <div className="font-medium text-foreground tracking-tight text-sm break-words">
                               {row.getValue('key') as string}
                             </div>
-                            {(allowRename || canUseAiRow || onOpenAllLanguages) && (
+                            {(canUseAiRow || onOpenAllLanguages) && (
                               <div className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
-                                {allowRename && (
-                                  <button
-                                    className="text-muted hover:text-foreground transition-colors"
-                                    onClick={() => openRename(actualRowIndex)}
-                                    aria-label="Rename key"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                    </svg>
-                                  </button>
-                                )}
                                 {canUseAiRow && (
                                   <button
                                     className="text-muted hover:text-foreground transition-colors"
@@ -787,31 +716,6 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
               <Button variant="destructive" onClick={confirmBulkDelete} disabled={submitting}>
                 {submitting ? 'Deleting…' : 'Delete'}
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Rename Dialog */}
-      {allowRename && (
-        <Dialog open={renameDialog.open} onOpenChange={(open) => setRenameDialog(d => ({ ...d, open }))}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Rename key</DialogTitle>
-              <DialogDescription>Provide a new, unique key.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <input
-                value={renameDialog.value}
-                onChange={e => setRenameDialog(d => ({ ...d, value: e.target.value }))}
-                className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm"
-              />
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setRenameDialog({ open: false, rowIndex: null, value: '' })} disabled={submitting}>Cancel</Button>
-                <Button onClick={confirmRename} disabled={submitting || !renameDialog.value.trim()}>
-                  {submitting ? 'Saving…' : 'Save'}
-                </Button>
-              </div>
             </div>
           </DialogContent>
         </Dialog>
