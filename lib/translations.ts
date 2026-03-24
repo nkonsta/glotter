@@ -398,14 +398,17 @@ export async function getLanguageCodeToIdMap(projectId: string): Promise<Record<
 /**
  * Bulk upsert translation keys by string value
  */
-export async function bulkUpsertKeys(projectId: string, keys: string[]): Promise<void> {
+export async function bulkUpsertKeys(projectId: string, keys: string[], chunkSize: number = 1000): Promise<void> {
   const uniqueKeys = Array.from(new Set(keys)).filter(k => !!k);
   if (uniqueKeys.length === 0) return;
-  const rows = uniqueKeys.map(k => ({ project_id: projectId, key: k }));
-  const { error } = await supabase
-    .from('translation_keys')
-    .upsert(rows, { onConflict: 'project_id,key' });
-  if (error) throw error;
+  for (let i = 0; i < uniqueKeys.length; i += chunkSize) {
+    const chunk = uniqueKeys.slice(i, i + chunkSize);
+    const rows = chunk.map(k => ({ project_id: projectId, key: k }));
+    const { error } = await supabase
+      .from('translation_keys')
+      .upsert(rows, { onConflict: 'project_id,key' });
+    if (error) throw error;
+  }
 }
 
 /**
