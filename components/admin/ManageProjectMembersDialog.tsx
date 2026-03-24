@@ -443,6 +443,7 @@ export default function ManageProjectMembersDialog({
         const description = typeof payload.error === 'string' ? payload.error : 'Could not remove member.';
         toast({ title: 'Failed to remove member', description, variant: 'error' });
         if (response.status === 401 || response.status === 403) {
+          setConfirmRemoveMember(null);
           onOpenChange(false);
         }
         return;
