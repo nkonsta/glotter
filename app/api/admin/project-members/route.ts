@@ -357,6 +357,42 @@ export async function DELETE(req: Request) {
     }
   }
 
+  // Fetch the target member's role and the total owner count in one go to guard
+  // against orphaning the project by removing its last owner.
+  const { data: targetMember, error: targetError } = await supabase
+    .from('project_members')
+    .select('role')
+    .eq('id', memberId)
+    .eq('project_id', projectId)
+    .maybeSingle();
+
+  if (targetError) {
+    return NextResponse.json({ error: 'Failed to verify member record.' }, { status: 500 });
+  }
+
+  if (!targetMember) {
+    return NextResponse.json({ error: 'Member not found.' }, { status: 404 });
+  }
+
+  if (targetMember.role === 'owner') {
+    const { count, error: countError } = await supabase
+      .from('project_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+      .eq('role', 'owner');
+
+    if (countError) {
+      return NextResponse.json({ error: 'Failed to verify owner count.' }, { status: 500 });
+    }
+
+    if ((count ?? 0) <= 1) {
+      return NextResponse.json(
+        { error: 'Cannot remove the last owner. Assign another owner before removing this member.' },
+        { status: 409 }
+      );
+    }
+  }
+
   const { error: deleteError } = await supabase
     .from('project_members')
     .delete()
