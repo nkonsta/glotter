@@ -326,3 +326,62 @@ export async function POST(req: Request) {
     },
   });
 }
+
+export async function DELETE(req: Request) {
+  const auth = await resolveRequester(req);
+  if ('response' in auth) return auth.response;
+
+  const { supabase, requester, isPlatformAdmin } = auth;
+
+  let payload: unknown;
+  try {
+    payload = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400 });
+  }
+
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    typeof (payload as { projectId?: unknown }).projectId !== 'string' ||
+    typeof (payload as { userId?: unknown }).userId !== 'string'
+  ) {
+    return NextResponse.json({ error: 'projectId and userId are required.' }, { status: 400 });
+  }
+
+  const projectId = (payload as { projectId: string }).projectId.trim();
+  const userId = (payload as { userId: string }).userId.trim();
+
+  if (!projectId || !userId) {
+    return NextResponse.json({ error: 'projectId and userId must be non-empty.' }, { status: 400 });
+  }
+
+  if (!isPlatformAdmin) {
+    const { data: membership, error: membershipError } = await supabase
+      .from('project_members')
+      .select('role')
+      .eq('project_id', projectId)
+      .eq('user_id', requester.id)
+      .maybeSingle();
+
+    if (membershipError) {
+      return NextResponse.json({ error: 'Failed to verify project permissions.' }, { status: 500 });
+    }
+
+    if (!membership || membership.role !== 'owner') {
+      return unauthorized('Insufficient permissions.', 403);
+    }
+  }
+
+  const { error: deleteError } = await supabase
+    .from('project_members')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('user_id', userId);
+
+  if (deleteError) {
+    return NextResponse.json({ error: 'Failed to remove member from the project.' }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}

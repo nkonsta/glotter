@@ -73,6 +73,8 @@ export default function ManageProjectMembersDialog({
   const [editSelection, setEditSelection] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [confirmRemoveMemberId, setConfirmRemoveMemberId] = useState<string | null>(null);
   const [editingMember, setEditingMember] = useState<MemberRecord | null>(null);
   const [editRole, setEditRole] = useState<ProjectRole>('member');
   const [editViewSelection, setEditViewSelection] = useState<Set<string>>(new Set());
@@ -196,6 +198,7 @@ export default function ManageProjectMembersDialog({
       setViewSelection(defaultViewSeed());
       setEditSelection(new Set());
       setEditingMember(null);
+      setConfirmRemoveMemberId(null);
     }
   }, [open, fetchMembers, defaultViewSeed]);
 
@@ -423,6 +426,52 @@ export default function ManageProjectMembersDialog({
     }
   }, [editingMember, projectId, accessToken, editRole, editViewSelection, editEditSelection, toast, onOpenChange, defaultViewSeed, fetchMembers]);
 
+  const handleRemoveMember = useCallback(
+    async (member: MemberRecord) => {
+      if (!projectId || !accessToken) return;
+
+      setRemovingMemberId(member.id);
+      setConfirmRemoveMemberId(null);
+      try {
+        const response = await fetch('/api/admin/project-members', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ projectId, userId: member.userId }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const description = typeof payload.error === 'string' ? payload.error : 'Could not remove member.';
+          toast({ title: 'Failed to remove member', description, variant: 'error' });
+          if (response.status === 401 || response.status === 403) {
+            onOpenChange(false);
+          }
+          return;
+        }
+
+        setMembers((prev) => prev.filter((m) => m.id !== member.id));
+        toast({
+          title: 'Member removed',
+          description: `${member.email ?? member.userId} has been removed from this project.`,
+          variant: 'success',
+        });
+      } catch (error) {
+        console.error('Failed to remove project member', error);
+        toast({
+          title: 'Failed to remove member',
+          description: error instanceof Error ? error.message : 'Unexpected error occurred.',
+          variant: 'error',
+        });
+      } finally {
+        setRemovingMemberId(null);
+      }
+    },
+    [projectId, accessToken, toast, onOpenChange]
+  );
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -598,21 +647,61 @@ export default function ManageProjectMembersDialog({
                           <span>Never signed in</span>
                         )}
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => startEditingMember(member)}
-                        disabled={updatingMemberId === member.id}
-                      >
-                        {updatingMemberId === member.id ? (
-                          <span className="inline-flex items-center gap-2">
-                            <Spinner size={14} />
-                            Updating…
-                          </span>
+                      <div className="flex items-center gap-2">
+                        {confirmRemoveMemberId === member.id ? (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setConfirmRemoveMemberId(null)}
+                              disabled={removingMemberId === member.id}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => void handleRemoveMember(member)}
+                              disabled={removingMemberId === member.id}
+                            >
+                              {removingMemberId === member.id ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <Spinner size={14} />
+                                  Removing…
+                                </span>
+                              ) : (
+                                'Confirm remove'
+                              )}
+                            </Button>
+                          </>
                         ) : (
-                          'Edit access'
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => startEditingMember(member)}
+                              disabled={updatingMemberId === member.id || removingMemberId === member.id}
+                            >
+                              {updatingMemberId === member.id ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <Spinner size={14} />
+                                  Updating…
+                                </span>
+                              ) : (
+                                'Edit access'
+                              )}
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => setConfirmRemoveMemberId(member.id)}
+                              disabled={updatingMemberId === member.id || removingMemberId === member.id}
+                            >
+                              Remove
+                            </Button>
+                          </>
                         )}
-                      </Button>
+                      </div>
                     </div>
                   </li>
                 ))}
