@@ -340,68 +340,34 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'projectId and memberId query parameters are required.' }, { status: 400 });
   }
 
-  if (!isPlatformAdmin) {
-    const { data: membership, error: membershipError } = await supabase
-      .from('project_members')
-      .select('role')
-      .eq('project_id', projectId)
-      .eq('user_id', requester.id)
-      .maybeSingle();
+  // Delegate the permission check, last-owner guard, and delete to a single
+  // SECURITY DEFINER database function so all three steps execute atomically
+  // under a row-level lock. This prevents a TOCTOU race where two concurrent
+  // requests both pass the owner-count check and both delete, leaving zero owners.
+  const { data: result, error: rpcError } = await supabase.rpc('remove_project_member', {
+    p_project_id:   projectId,
+    p_member_id:    memberId,
+    p_requester_id: requester.id,
+    p_bypass_rls:   isPlatformAdmin,
+  });
 
-    if (membershipError) {
-      return NextResponse.json({ error: 'Failed to verify project permissions.' }, { status: 500 });
-    }
-
-    if (!membership || membership.role !== 'owner') {
-      return unauthorized('Insufficient permissions.', 403);
-    }
+  if (rpcError) {
+    return NextResponse.json({ error: 'Failed to remove member.' }, { status: 500 });
   }
 
-  // Fetch the target member's role and the total owner count in one go to guard
-  // against orphaning the project by removing its last owner.
-  const { data: targetMember, error: targetError } = await supabase
-    .from('project_members')
-    .select('role')
-    .eq('id', memberId)
-    .eq('project_id', projectId)
-    .maybeSingle();
-
-  if (targetError) {
-    return NextResponse.json({ error: 'Failed to verify member record.' }, { status: 500 });
-  }
-
-  if (!targetMember) {
-    return NextResponse.json({ error: 'Member not found.' }, { status: 404 });
-  }
-
-  if (targetMember.role === 'owner') {
-    const { count, error: countError } = await supabase
-      .from('project_members')
-      .select('id', { count: 'exact', head: true })
-      .eq('project_id', projectId)
-      .eq('role', 'owner');
-
-    if (countError) {
-      return NextResponse.json({ error: 'Failed to verify owner count.' }, { status: 500 });
-    }
-
-    if ((count ?? 0) <= 1) {
+  switch (result) {
+    case 'deleted':
+      return NextResponse.json({ status: 'deleted' });
+    case 'not_found':
+      return NextResponse.json({ error: 'Member not found.' }, { status: 404 });
+    case 'last_owner':
       return NextResponse.json(
         { error: 'Cannot remove the last owner. Assign another owner before removing this member.' },
         { status: 409 }
       );
-    }
+    case 'permission_denied':
+      return unauthorized('Insufficient permissions.', 403);
+    default:
+      return NextResponse.json({ error: 'Unexpected result from remove_project_member.' }, { status: 500 });
   }
-
-  const { error: deleteError } = await supabase
-    .from('project_members')
-    .delete()
-    .eq('id', memberId)
-    .eq('project_id', projectId);
-
-  if (deleteError) {
-    return NextResponse.json({ error: 'Failed to remove member.' }, { status: 500 });
-  }
-
-  return NextResponse.json({ status: 'deleted' });
 }
