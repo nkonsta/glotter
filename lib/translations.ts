@@ -258,35 +258,18 @@ export async function createProject(
   name: string,
   initialLanguages?: Array<{ code: string; name?: string }>
 ): Promise<Project> {
-  // Create project
-  const { data: project, error: projectError } = await supabase
-    .from('projects')
-    .insert({ name })
-    .select('*')
-    .single();
+  const response = await fetch('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, initialLanguages }),
+  });
 
-  if (projectError) throw projectError;
-  const created = project as Project;
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(err.error ?? 'Failed to create project');
+  }
 
-  // Initialize languages (default to 'en' if none provided)
-  const languagesToInsert = (initialLanguages && initialLanguages.length > 0)
-    ? initialLanguages
-    : [{ code: 'en', name: 'English' }];
-
-  const insertRows = languagesToInsert.map(l => ({
-    project_id: created.id,
-    language_code: (l.code || '').toLowerCase(),
-    language_name: l.name ?? null,
-    is_active: true,
-  }));
-
-  const { error: langError } = await supabase
-    .from('project_languages')
-    .upsert(insertRows, { onConflict: 'project_id,language_code' });
-
-  if (langError) throw langError;
-
-  return created;
+  return response.json();
 }
 
 /**
