@@ -288,13 +288,33 @@ export async function DELETE(req: Request) {
   const auth = await resolveRequester(req);
   if ('response' in auth) return auth.response;
 
-  const { supabase, requester } = auth;
+  const { supabase, requester, isPlatformAdmin } = auth;
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get('projectId');
   const memberId = searchParams.get('memberId');
 
   if (!projectId || !memberId) {
     return NextResponse.json({ error: 'projectId and memberId query parameters are required.' }, { status: 400 });
+  }
+
+  // Gate the RPC call with an upfront owner/admin check so that unauthorised
+  // callers never reach remove_project_member and cannot contend on its broad
+  // FOR UPDATE owner-row lock (lock-based DoS prevention).
+  if (!isPlatformAdmin) {
+    const { data: membership, error: membershipError } = await supabase
+      .from('project_members')
+      .select('role')
+      .eq('project_id', projectId)
+      .eq('user_id', requester.id)
+      .maybeSingle();
+
+    if (membershipError) {
+      return NextResponse.json({ error: 'Failed to verify project permissions.' }, { status: 500 });
+    }
+
+    if (!membership || membership.role !== 'owner') {
+      return unauthorized('Insufficient permissions.', 403);
+    }
   }
 
   // Delegate the permission check, last-owner guard, and delete to a single
