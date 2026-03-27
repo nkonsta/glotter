@@ -14,25 +14,6 @@ function unauthorized(message: string, status = 401) {
   return NextResponse.json({ error: message }, { status });
 }
 
-function arraysEqual(a: string[] | null | undefined, b: string[] | null | undefined) {
-  const isArrayA = Array.isArray(a);
-  const isArrayB = Array.isArray(b);
-  if (!isArrayA && !isArrayB) {
-    return true;
-  }
-  if (!isArrayA || !isArrayB) {
-    return false;
-  }
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let index = 0; index < a.length; index += 1) {
-    if (a[index] !== b[index]) {
-      return false;
-    }
-  }
-  return true;
-}
 
 async function resolveRequester(req: Request): Promise<RequesterContext> {
   const supabase = getSupabaseAdminClient();
@@ -132,7 +113,7 @@ export async function POST(req: Request) {
   const auth = await resolveRequester(req);
   if ('response' in auth) return auth.response;
 
-  const { supabase, requester, isPlatformAdmin } = auth;
+  const { supabase, requester } = auth;
 
   let payload: unknown;
   try {
@@ -201,128 +182,73 @@ export async function POST(req: Request) {
     editLanguages = normalizedEdit;
   }
 
-  if (!isPlatformAdmin) {
-    const { data: membership, error: membershipError } = await supabase
-      .from('project_members')
-      .select('role')
-      .eq('project_id', projectId)
-      .eq('user_id', requester.id)
-      .maybeSingle();
-
-    if (membershipError) {
-      return NextResponse.json({ error: 'Failed to verify project permissions.' }, { status: 500 });
-    }
-
-    if (!membership || membership.role !== 'owner') {
-      return unauthorized('Insufficient permissions.', 403);
-    }
-  }
-
-  const { data: listResult, error: lookupError } = await supabase.auth.admin.listUsers();
+  // Resolve the target user by email using a SQL function that queries
+  // auth.users directly.  The JS admin client's listUsers() fetches one page
+  // of results with no email filter, so it silently misses users beyond the
+  // first page and would incorrectly invite an already-registered account.
+  const { data: foundUsers, error: lookupError } = await supabase.rpc('find_auth_user_by_email', {
+    p_email: email,
+  });
 
   if (lookupError) {
     return NextResponse.json({ error: 'Failed to look up user in Supabase Auth.' }, { status: 500 });
   }
 
-  const matchingUser = listResult?.users?.find((u) => u.email?.toLowerCase() === email) ?? null;
-  let targetUser = matchingUser;
+  const foundUser = (foundUsers as { id: string; email: string }[] | null)?.[0] ?? null;
+  let targetUserId: string;
+  let targetEmail: string;
 
-  if (!targetUser) {
+  if (foundUser) {
+    targetUserId = foundUser.id;
+    targetEmail = foundUser.email;
+  } else {
     const { data: invitedUser, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email);
     if (inviteError || !invitedUser?.user) {
       return NextResponse.json({ error: 'Unable to create or invite the specified user.' }, { status: 500 });
     }
-    targetUser = invitedUser.user;
-  }
-
-  const { data: existing, error: membershipError } = await supabase
-    .from('project_members')
-    .select('id, role, view_languages, edit_languages')
-    .eq('project_id', projectId)
-    .eq('user_id', targetUser.id)
-    .maybeSingle();
-
-  if (membershipError) {
-    return NextResponse.json({ error: 'Failed to check existing project membership.' }, { status: 500 });
+    targetUserId = invitedUser.user.id;
+    targetEmail = invitedUser.user.email ?? email;
   }
 
   const nextView = role === 'member' ? viewLanguages : null;
-  const nextEdit = role === 'member' ? editLanguages ?? [] : null;
+  const nextEdit = role === 'member' ? (editLanguages ?? []) : null;
 
-  if (existing) {
-    const existingView = Array.isArray(existing.view_languages) ? [...existing.view_languages].sort() : null;
-    const existingEdit = Array.isArray(existing.edit_languages) ? [...existing.edit_languages].sort() : null;
-    const requiresUpdate =
-      existing.role !== role ||
-      !arraysEqual(existingView, nextView) ||
-      !arraysEqual(existingEdit, nextEdit);
+  // Delegate permission check, last-owner-demotion guard, and upsert to a
+  // single SECURITY DEFINER function so they execute atomically under a
+  // row-level lock, preventing a TOCTOU race identical to the one guarded
+  // in remove_project_member.
+  const { data: upsertResult, error: upsertError } = await supabase.rpc('upsert_project_member', {
+    p_project_id:     projectId,
+    p_requester_id:   requester.id,
+    p_target_user_id: targetUserId,
+    p_role:           role,
+    p_view_languages: nextView,
+    p_edit_languages: nextEdit,
+  });
 
-    if (requiresUpdate) {
-      const { error: updateError } = await supabase
-        .from('project_members')
-        .update({
-          role,
-          view_languages: role === 'member' ? nextView : null,
-          edit_languages: role === 'member' ? nextEdit : null,
-        })
-        .eq('id', existing.id);
-
-      if (updateError) {
-        return NextResponse.json({ error: 'Failed to update member access.' }, { status: 500 });
-      }
-
-      return NextResponse.json({
-        status: 'updated',
-        member: {
-          id: existing.id,
-          userId: targetUser.id,
-          role,
-          email: targetUser.email,
-          viewLanguages: role === 'member' ? nextView : null,
-          editLanguages: role === 'member' ? nextEdit : null,
-        },
-      });
-    }
-
-    return NextResponse.json({
-      status: 'unchanged',
-      member: {
-        id: existing.id,
-        userId: targetUser.id,
-        role,
-        email: targetUser.email,
-        viewLanguages: role === 'member' ? existingView ?? [] : null,
-        editLanguages: role === 'member' ? existingEdit ?? [] : null,
-      },
-    });
+  if (upsertError) {
+    return NextResponse.json({ error: 'Failed to save member.' }, { status: 500 });
   }
 
-  const { data: inserted, error: insertError } = await supabase
-    .from('project_members')
-    .insert({
-      project_id: projectId,
-      user_id: targetUser.id,
-      role,
-      view_languages: role === 'member' ? nextView : null,
-      edit_languages: role === 'member' ? nextEdit : null,
-    })
-    .select('id, user_id, role, view_languages, edit_languages, created_at')
-    .single();
+  if (upsertResult === 'permission_denied') {
+    return unauthorized('Insufficient permissions.', 403);
+  }
 
-  if (insertError || !inserted) {
-    return NextResponse.json({ error: 'Failed to add member to the project.' }, { status: 500 });
+  if (upsertResult === 'last_owner') {
+    return NextResponse.json(
+      { error: 'Cannot demote the last owner. Assign another owner before changing this member\'s role.' },
+      { status: 409 }
+    );
   }
 
   return NextResponse.json({
-    status: 'created',
+    status: upsertResult,
     member: {
-      id: inserted.id,
-      userId: inserted.user_id,
-      role: inserted.role,
-      email: targetUser.email,
-      viewLanguages: role === 'member' ? nextView : null,
-      editLanguages: role === 'member' ? nextEdit : null,
-      createdAt: inserted.created_at,
+      userId: targetUserId,
+      role,
+      email: targetEmail,
+      viewLanguages: nextView,
+      editLanguages: nextEdit,
     },
   });
 }
