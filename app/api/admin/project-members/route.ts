@@ -331,7 +331,7 @@ export async function DELETE(req: Request) {
   const auth = await resolveRequester(req);
   if ('response' in auth) return auth.response;
 
-  const { supabase, requester, isPlatformAdmin } = auth;
+  const { supabase, requester } = auth;
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get('projectId');
   const memberId = searchParams.get('memberId');
@@ -348,7 +348,6 @@ export async function DELETE(req: Request) {
     p_project_id:   projectId,
     p_member_id:    memberId,
     p_requester_id: requester.id,
-    p_bypass_rls:   isPlatformAdmin,
   });
 
   if (rpcError) {
