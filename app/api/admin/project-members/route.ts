@@ -182,6 +182,37 @@ export async function POST(req: Request) {
     editLanguages = normalizedEdit;
   }
 
+  // Authorise before touching auth.users or sending any invitation email.
+  // upsert_project_member enforces this too, but by then inviteUserByEmail
+  // has already fired — a side effect that cannot be rolled back if the DB
+  // function later refuses the operation.
+  const { data: adminMatch, error: adminCheckError } = await supabase
+    .from('platform_admins')
+    .select('user_id')
+    .eq('user_id', requester.id)
+    .maybeSingle();
+
+  if (adminCheckError) {
+    return NextResponse.json({ error: 'Failed to verify admin access.' }, { status: 500 });
+  }
+
+  if (!adminMatch) {
+    const { data: membership, error: membershipError } = await supabase
+      .from('project_members')
+      .select('role')
+      .eq('project_id', projectId)
+      .eq('user_id', requester.id)
+      .maybeSingle();
+
+    if (membershipError) {
+      return NextResponse.json({ error: 'Failed to verify project permissions.' }, { status: 500 });
+    }
+
+    if (!membership || membership.role !== 'owner') {
+      return unauthorized('Insufficient permissions.', 403);
+    }
+  }
+
   // Resolve the target user by email using a SQL function that queries
   // auth.users directly.  The JS admin client's listUsers() fetches one page
   // of results with no email filter, so it silently misses users beyond the
