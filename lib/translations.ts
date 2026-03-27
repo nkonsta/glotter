@@ -258,9 +258,19 @@ export async function createProject(
   name: string,
   initialLanguages?: Array<{ code: string; name?: string }>
 ): Promise<Project> {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) {
+    throw new Error('Not authenticated. Please sign in again.');
+  }
+
   const response = await fetch('/api/projects', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: JSON.stringify({ name, initialLanguages }),
   });
 
