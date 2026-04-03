@@ -187,7 +187,7 @@ export default function AuthScreen() {
           </Button>
         </form>
 
-        <div className="space-y-2 text-center text-sm text-muted">
+        <div className="hidden space-y-2 text-center text-sm text-muted">
           {mode === "sign-in" && (
             <>
               <button
