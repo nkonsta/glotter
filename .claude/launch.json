@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "glotter",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "PATH=/Users/nkonsta/.nvm/versions/node/v24.14.0/bin:$PATH npm run dev"],
+      "port": 3000
+    }
+  ]
+}

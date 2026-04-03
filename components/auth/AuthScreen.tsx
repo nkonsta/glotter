@@ -167,6 +167,7 @@ export default function AuthScreen() {
             </div>
           )}
 
+          <div className="pt-2">
           <Button
             type="submit"
             className="w-full"
@@ -185,6 +186,7 @@ export default function AuthScreen() {
               "Send reset link"
             )}
           </Button>
+          </div>
         </form>
 
         <div className="hidden space-y-2 text-center text-sm text-muted">
