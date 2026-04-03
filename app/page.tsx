@@ -656,10 +656,14 @@ export default function Home() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-56">
-                    <DropdownMenuItem onClick={() => setIsCreateProjectOpen(true)} className="font-medium">
-                      + New project…
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
+                    {isPlatformAdmin && (
+                      <>
+                        <DropdownMenuItem onClick={() => setIsCreateProjectOpen(true)} className="font-medium">
+                          + New project…
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
                     {projects.map((project) => (
                       <DropdownMenuItem
                         key={project.id}
@@ -764,9 +768,11 @@ export default function Home() {
             <p className="text-muted">
               Create a project to get started.
             </p>
-            <div className="mt-6">
-              <Button onClick={() => setIsCreateProjectOpen(true)}>+ Create project</Button>
-            </div>
+            {isPlatformAdmin && (
+              <div className="mt-6">
+                <Button onClick={() => setIsCreateProjectOpen(true)}>+ Create project</Button>
+              </div>
+            )}
           </div>
         ) : !selectedProject ? (
           <div className="bg-surface-elevated p-12 rounded-xl shadow-card text-center border border-border">
