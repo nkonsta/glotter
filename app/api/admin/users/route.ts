@@ -51,12 +51,22 @@ export async function GET(req: Request) {
 
   const { supabase } = auth;
 
-  const { data: listResult, error } = await supabase.auth.admin.listUsers();
-  if (error) {
-    return NextResponse.json({ error: 'Failed to list users.' }, { status: 500 });
+  // listUsers is paginated (default 50/page); fetch all pages
+  const allUsers: Awaited<ReturnType<typeof supabase.auth.admin.listUsers>>['data']['users'] = [];
+  let page = 1;
+  const perPage = 1000;
+  while (true) {
+    const { data: listResult, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      return NextResponse.json({ error: 'Failed to list users.' }, { status: 500 });
+    }
+    const batch = listResult?.users ?? [];
+    allUsers.push(...batch);
+    if (batch.length < perPage) break;
+    page += 1;
   }
 
-  const users = (listResult?.users ?? []).map((u) => ({
+  const users = allUsers.map((u) => ({
     id: u.id,
     email: u.email ?? null,
     createdAt: u.created_at,
@@ -177,6 +187,15 @@ export async function DELETE(req: Request) {
 
   if (activityError) {
     return NextResponse.json({ error: 'Failed to clean up activity log references.' }, { status: 500 });
+  }
+
+  const { error: invitesError } = await supabase
+    .from('project_invites')
+    .update({ invited_by: null })
+    .eq('invited_by', userId);
+
+  if (invitesError) {
+    return NextResponse.json({ error: 'Failed to clean up project invite references.' }, { status: 500 });
   }
 
   const { error: adminError } = await supabase
