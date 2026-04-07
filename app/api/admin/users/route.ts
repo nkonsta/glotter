@@ -52,7 +52,7 @@ export async function GET(req: Request) {
   const { supabase } = auth;
 
   // listUsers is paginated (default 50/page); fetch all pages
-  const allUsers: Awaited<ReturnType<typeof supabase.auth.admin.listUsers>>['data']['users'] = [];
+  const allUsers: User[] = [];
   let page = 1;
   const perPage = 1000;
   while (true) {
