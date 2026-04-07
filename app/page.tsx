@@ -6,6 +6,7 @@ import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslatio
 import { TranslationRow } from '@/lib/supabase';
 import ManageProjectMembersDialog from '@/components/admin/ManageProjectMembersDialog';
 import UserManagementDialog from '@/components/admin/UserManagementDialog';
+import ChangePasswordDialog from '@/components/admin/ChangePasswordDialog';
 import TranslationGrid from '@/components/TranslationGrid';
 import { Button } from '@/components/ui/Button';
 import {
@@ -92,6 +93,7 @@ export default function Home() {
   const [deletingProject, setDeletingProject] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [projectMembership, setProjectMembership] = useState<ProjectMembership | null>(null);
 
@@ -663,9 +665,6 @@ export default function Home() {
                         <DropdownMenuItem onClick={() => setIsCreateProjectOpen(true)} className="font-medium">
                           + New project…
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setIsUserManagementOpen(true)}>
-                          Manage users…
-                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                       </>
                     )}
@@ -717,13 +716,22 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <ThemeToggle />
-            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-muted max-w-[220px]">
+            {isPlatformAdmin && (
+              <Button variant="outline" size="sm" onClick={() => setIsUserManagementOpen(true)}>
+                Manage users
+              </Button>
+            )}
+            <button
+              onClick={() => setIsChangePasswordOpen(true)}
+              className="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-muted max-w-[220px] cursor-pointer hover:bg-surface-hover hover:border-border/80 transition-colors"
+              title="Change password"
+            >
               <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 10-8 0 4 4 0 008 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 21a7 7 0 0116 0" />
               </svg>
               <span className="truncate">{user.email}</span>
-            </div>
+            </button>
             <Button variant="outline" size="sm" onClick={handleSignOut} disabled={signingOut}>
               {signingOut ? (
                 <span className="inline-flex items-center gap-2">
@@ -1114,6 +1122,10 @@ export default function Home() {
           currentUserId={user?.id ?? null}
         />
       )}
+      <ChangePasswordDialog
+        open={isChangePasswordOpen}
+        onOpenChange={setIsChangePasswordOpen}
+      />
       {/* Create Project Dialog */}
       <Dialog open={isCreateProjectOpen} onOpenChange={setIsCreateProjectOpen}>
         <DialogContent>
