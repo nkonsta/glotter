@@ -6,6 +6,7 @@ import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslatio
 import { TranslationRow } from '@/lib/supabase';
 import ManageProjectMembersDialog from '@/components/admin/ManageProjectMembersDialog';
 import UserManagementDialog from '@/components/admin/UserManagementDialog';
+import ChangePasswordDialog from '@/components/admin/ChangePasswordDialog';
 import TranslationGrid from '@/components/TranslationGrid';
 import { Button } from '@/components/ui/Button';
 import {
@@ -92,6 +93,7 @@ export default function Home() {
   const [deletingProject, setDeletingProject] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [projectMembership, setProjectMembership] = useState<ProjectMembership | null>(null);
 
@@ -663,9 +665,6 @@ export default function Home() {
                         <DropdownMenuItem onClick={() => setIsCreateProjectOpen(true)} className="font-medium">
                           + New project…
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setIsUserManagementOpen(true)}>
-                          Manage users…
-                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                       </>
                     )}
@@ -717,13 +716,25 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <ThemeToggle />
-            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-muted max-w-[220px]">
-              <svg className="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            {isPlatformAdmin && (
+              <Button variant="outline" size="sm" onClick={() => setIsUserManagementOpen(true)}>
+                Manage users
+              </Button>
+            )}
+            <button
+              onClick={() => setIsChangePasswordOpen(true)}
+              className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-foreground cursor-pointer hover:bg-surface-hover hover:border-primary/50 hover:text-primary transition-colors group sm:max-w-[220px]"
+              title="Change password"
+            >
+              <svg className="h-4 w-4 text-muted group-hover:text-primary transition-colors shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 10-8 0 4 4 0 008 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 21a7 7 0 0116 0" />
               </svg>
-              <span className="truncate">{user.email}</span>
-            </div>
+              <span className="hidden sm:inline truncate">{user.email}</span>
+              <svg className="h-3 w-3 text-muted group-hover:text-primary transition-colors shrink-0 sm:ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a4 4 0 01-1.414.93l-3 1 1-3a4 4 0 01.93-1.414z" />
+              </svg>
+            </button>
             <Button variant="outline" size="sm" onClick={handleSignOut} disabled={signingOut}>
               {signingOut ? (
                 <span className="inline-flex items-center gap-2">
@@ -1114,6 +1125,10 @@ export default function Home() {
           currentUserId={user?.id ?? null}
         />
       )}
+      <ChangePasswordDialog
+        open={isChangePasswordOpen}
+        onOpenChange={setIsChangePasswordOpen}
+      />
       {/* Create Project Dialog */}
       <Dialog open={isCreateProjectOpen} onOpenChange={setIsCreateProjectOpen}>
         <DialogContent>
