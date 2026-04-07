@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 type UserRecord = {
   id: string;
   email: string | null;
+  displayName: string | null;
   createdAt: string;
   lastSignInAt: string | null;
   emailConfirmedAt: string | null;
@@ -33,6 +34,7 @@ export default function UserManagementDialog({
   const [loadingUsers, setLoadingUsers] = useState(false);
 
   const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -83,11 +85,13 @@ export default function UserManagementDialog({
     if (open) {
       void fetchUsers();
       setEmail('');
+      setDisplayName('');
       setPassword('');
       setShowPassword(false);
       setConfirmDeleteUserId(null);
     } else {
       setEmail('');
+      setDisplayName('');
       setPassword('');
       setShowPassword(false);
       setConfirmDeleteUserId(null);
@@ -107,7 +111,7 @@ export default function UserManagementDialog({
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ email: email.trim(), password }),
+          body: JSON.stringify({ email: email.trim(), password, displayName: displayName.trim() || undefined }),
         });
 
         const payload = await response.json().catch(() => ({}));
@@ -119,11 +123,12 @@ export default function UserManagementDialog({
 
         toast({
           title: 'User created',
-          description: `${email.trim()} has been created and can log in immediately.`,
+          description: `${displayName.trim() || email.trim()} has been created and can log in immediately.`,
           variant: 'success',
         });
 
         setEmail('');
+        setDisplayName('');
         setPassword('');
         void fetchUsers();
       } catch (error) {
@@ -137,7 +142,7 @@ export default function UserManagementDialog({
         setSubmitting(false);
       }
     },
-    [accessToken, email, password, toast, fetchUsers]
+    [accessToken, email, displayName, password, toast, fetchUsers]
   );
 
   const handleDeleteUser = useCallback(
@@ -212,6 +217,20 @@ export default function UserManagementDialog({
           </div>
 
           <div className="space-y-2">
+            <label className="block text-sm font-medium text-muted" htmlFor="new-user-display-name">
+              Display name <span className="text-muted font-normal">(optional)</span>
+            </label>
+            <input
+              id="new-user-display-name"
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="e.g. Alex Smith"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+
+          <div className="space-y-2">
             <label className="block text-sm font-medium text-muted" htmlFor="new-user-password">
               Password
             </label>
@@ -280,7 +299,10 @@ export default function UserManagementDialog({
                     className="flex flex-col gap-3 rounded-lg border border-border bg-surface px-3 py-2 sm:flex-row sm:items-start sm:justify-between"
                   >
                     <div className="space-y-1">
-                      <p className="text-sm font-medium text-foreground">{user.email ?? user.id}</p>
+                      <p className="text-sm font-medium text-foreground">{user.displayName ?? user.email ?? user.id}</p>
+                      {user.displayName && (
+                        <p className="text-xs text-muted">{user.email}</p>
+                      )}
                       <div className="flex items-center gap-2 text-xs text-muted">
                         {user.emailConfirmedAt ? (
                           <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">

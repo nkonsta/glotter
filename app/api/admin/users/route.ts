@@ -69,6 +69,7 @@ export async function GET(req: Request) {
   const users = allUsers.map((u) => ({
     id: u.id,
     email: u.email ?? null,
+    displayName: (u.user_metadata?.display_name as string | undefined) ?? null,
     createdAt: u.created_at,
     lastSignInAt: u.last_sign_in_at ?? null,
     emailConfirmedAt: u.email_confirmed_at ?? null,
@@ -101,6 +102,10 @@ export async function POST(req: Request) {
 
   const email = (payload as { email: string }).email.trim().toLowerCase();
   const password = (payload as { password: string }).password;
+  const displayName =
+    typeof (payload as { displayName?: unknown }).displayName === 'string'
+      ? ((payload as { displayName: string }).displayName.trim() || null)
+      : null;
 
   if (!email || !password) {
     return NextResponse.json({ error: 'email and password must be non-empty.' }, { status: 400 });
@@ -114,6 +119,7 @@ export async function POST(req: Request) {
     email,
     password,
     email_confirm: true,
+    ...(displayName ? { user_metadata: { display_name: displayName } } : {}),
   });
 
   if (createError || !created?.user) {
@@ -125,6 +131,7 @@ export async function POST(req: Request) {
     user: {
       id: created.user.id,
       email: created.user.email ?? null,
+      displayName: (created.user.user_metadata?.display_name as string | undefined) ?? null,
       createdAt: created.user.created_at,
     },
   });
