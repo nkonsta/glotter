@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Check, Eye, EyeOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -104,37 +104,30 @@ export default function ChangePasswordDialog({ open, onOpenChange, currentDispla
           <DialogDescription>Update your display name or change your password.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-muted" htmlFor="profile-display-name">
-              Display name
-            </label>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-muted" htmlFor="profile-display-name">
+            Display name
+          </label>
+          <div className="relative">
             <input
               id="profile-display-name"
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="e.g. Alex Smith"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
-          </div>
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void handleSaveDisplayName()}
-              disabled={savingDisplayName || displayName.trim() === (currentDisplayName ?? '')}
-            >
-              {savingDisplayName ? (
-                <span className="inline-flex items-center gap-2">
-                  <Spinner size={14} />
-                  Saving…
-                </span>
-              ) : (
-                'Save name'
-              )}
-            </Button>
+            {displayName.trim() !== (currentDisplayName ?? '') && (
+              <button
+                type="button"
+                onClick={() => void handleSaveDisplayName()}
+                disabled={savingDisplayName}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors disabled:opacity-50"
+                aria-label="Save display name"
+              >
+                {savingDisplayName ? <Spinner size={15} /> : <Check size={15} />}
+              </button>
+            )}
           </div>
         </div>
 
