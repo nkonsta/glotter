@@ -306,13 +306,13 @@ export default function ManageProjectMembersDialog({
         }
 
         toast({
-          title: 'Member invited',
+          title: 'User added',
           description:
             payload.status === 'updated'
               ? 'Existing member access updated.'
               : payload.status === 'unchanged'
                 ? 'User already has the same access.'
-                : 'Invitation sent successfully.',
+                : 'User added successfully.',
           variant: 'success',
         });
 
@@ -593,10 +593,10 @@ export default function ManageProjectMembersDialog({
                 {submitting ? (
                   <span className="inline-flex items-center gap-2">
                     <Spinner size={16} />
-                    Inviting…
+                    Adding…
                   </span>
                 ) : (
-                  'Invite member'
+                  'Add user'
                 )}
               </Button>
             </div>

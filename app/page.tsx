@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations, getProjectMembership, type ProjectMembership } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import ManageProjectMembersDialog from '@/components/admin/ManageProjectMembersDialog';
+import UserManagementDialog from '@/components/admin/UserManagementDialog';
 import TranslationGrid from '@/components/TranslationGrid';
 import { Button } from '@/components/ui/Button';
 import {
@@ -90,6 +91,7 @@ export default function Home() {
   const [confirmProjectName, setConfirmProjectName] = useState('');
   const [deletingProject, setDeletingProject] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
+  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [projectMembership, setProjectMembership] = useState<ProjectMembership | null>(null);
 
@@ -661,6 +663,9 @@ export default function Home() {
                         <DropdownMenuItem onClick={() => setIsCreateProjectOpen(true)} className="font-medium">
                           + New project…
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setIsUserManagementOpen(true)}>
+                          Manage users…
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                       </>
                     )}
@@ -1099,6 +1104,14 @@ export default function Home() {
           projectName={selectedProjectInfo?.name}
           accessToken={session?.access_token ?? null}
           availableLanguages={sortedLanguages}
+        />
+      )}
+      {isPlatformAdmin && (
+        <UserManagementDialog
+          open={isUserManagementOpen}
+          onOpenChange={setIsUserManagementOpen}
+          accessToken={session?.access_token ?? null}
+          currentUserId={user?.id ?? null}
         />
       )}
       {/* Create Project Dialog */}
