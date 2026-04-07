@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
@@ -11,10 +11,13 @@ import { supabase } from '@/lib/supabase';
 type ChangePasswordDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  currentDisplayName?: string | null;
 };
 
-export default function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps) {
+export default function ChangePasswordDialog({ open, onOpenChange, currentDisplayName }: ChangePasswordDialogProps) {
   const { toast } = useToast();
+  const [displayName, setDisplayName] = useState(currentDisplayName ?? '');
+  const [savingDisplayName, setSavingDisplayName] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNew, setShowNew] = useState(false);
@@ -22,8 +25,13 @@ export default function ChangePasswordDialog({ open, onOpenChange }: ChangePassw
   const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState('');
 
+  useEffect(() => {
+    setDisplayName(currentDisplayName ?? '');
+  }, [currentDisplayName]);
+
   const handleClose = (nextOpen: boolean) => {
     if (!nextOpen) {
+      setDisplayName(currentDisplayName ?? '');
       setNewPassword('');
       setConfirmPassword('');
       setShowNew(false);
@@ -31,6 +39,26 @@ export default function ChangePasswordDialog({ open, onOpenChange }: ChangePassw
       setValidationError('');
     }
     onOpenChange(nextOpen);
+  };
+
+  const handleSaveDisplayName = async () => {
+    setSavingDisplayName(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ data: { display_name: displayName.trim() || null } });
+      if (error) {
+        toast({ title: 'Failed to update display name', description: error.message, variant: 'error' });
+        return;
+      }
+      toast({ title: 'Display name updated', description: 'Your display name has been saved.', variant: 'success' });
+    } catch (err) {
+      toast({
+        title: 'Failed to update display name',
+        description: err instanceof Error ? err.message : 'Unexpected error occurred.',
+        variant: 'error',
+      });
+    } finally {
+      setSavingDisplayName(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -72,9 +100,47 @@ export default function ChangePasswordDialog({ open, onOpenChange }: ChangePassw
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Change password</DialogTitle>
-          <DialogDescription>Enter a new password for your account.</DialogDescription>
+          <DialogTitle>Edit profile</DialogTitle>
+          <DialogDescription>Update your display name or change your password.</DialogDescription>
         </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-muted" htmlFor="profile-display-name">
+              Display name
+            </label>
+            <input
+              id="profile-display-name"
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="e.g. Alex Smith"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handleSaveDisplayName()}
+              disabled={savingDisplayName || displayName.trim() === (currentDisplayName ?? '')}
+            >
+              {savingDisplayName ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner size={14} />
+                  Saving…
+                </span>
+              ) : (
+                'Save name'
+              )}
+            </Button>
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-4">
+          <p className="text-sm font-medium text-foreground mb-3">Change password</p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div className="space-y-2">
