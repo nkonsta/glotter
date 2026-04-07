@@ -142,7 +142,7 @@ export default function UserManagementDialog({
         setSubmitting(false);
       }
     },
-    [accessToken, email, password, toast, fetchUsers]
+    [accessToken, email, displayName, password, toast, fetchUsers]
   );
 
   const handleDeleteUser = useCallback(
