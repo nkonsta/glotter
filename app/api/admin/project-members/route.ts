@@ -228,11 +228,10 @@ export async function POST(req: Request) {
   let targetUser = matchingUser;
 
   if (!targetUser) {
-    const { data: invitedUser, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email);
-    if (inviteError || !invitedUser?.user) {
-      return NextResponse.json({ error: 'Unable to create or invite the specified user.' }, { status: 500 });
-    }
-    targetUser = invitedUser.user;
+    return NextResponse.json(
+      { error: 'No user found with that email. Create the user first via User Management.' },
+      { status: 404 }
+    );
   }
 
   const { data: existing, error: membershipError } = await supabase
