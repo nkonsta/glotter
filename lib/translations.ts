@@ -26,6 +26,8 @@ interface TranslationKeyRecord {
   translations?: TranslationRecord[];
 }
 
+const SUPABASE_PAGE_SIZE = 1000;
+
 /**
  * Fetch translations for a project in grid format.
  * Optionally filters to a subset of language codes to reduce payload.
@@ -51,20 +53,32 @@ export async function getTranslationsGrid(projectId: string, languageCodes?: str
 
   const languageIds = languages.map(lang => lang.id);
 
-  // Get translation keys with their translations using a single query with embedding
-  let keysQuery = supabase
-    .from('translation_keys')
-    .select('id, key, translations(id, project_language_id, value)')
-    .eq('project_id', projectId)
-    .order('key');
+  const keys: TranslationKeyRecord[] = [];
+  let from = 0;
 
-  if (languageIds.length > 0) {
-    keysQuery = keysQuery.in('translations.project_language_id', languageIds);
+  while (true) {
+    // Supabase caps result sets to 1,000 rows by default, so page keys explicitly.
+    let keysQuery = supabase
+      .from('translation_keys')
+      .select('id, key, translations(id, project_language_id, value)')
+      .eq('project_id', projectId)
+      .order('key')
+      .range(from, from + SUPABASE_PAGE_SIZE - 1);
+
+    if (languageIds.length > 0) {
+      keysQuery = keysQuery.in('translations.project_language_id', languageIds);
+    }
+
+    const { data: keysData, error: keysError } = await keysQuery;
+    if (keysError) throw keysError;
+
+    const rows = (keysData ?? []) as TranslationKeyRecord[];
+    keys.push(...rows);
+
+    if (rows.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
   }
 
-  const { data: keysData, error: keysError } = await keysQuery;
-  if (keysError) throw keysError;
-  const keys = (keysData ?? []) as TranslationKeyRecord[];
   if (keys.length === 0) return [];
 
   // Build the grid structure
@@ -414,7 +428,7 @@ export async function bulkUpsertKeys(projectId: string, keys: string[], chunkSiz
 /**
  * Return key string -> id map for a project
  */
-export async function getKeyToIdMap(projectId: string, pageSize: number = 1000): Promise<Record<string, string>> {
+export async function getKeyToIdMap(projectId: string, pageSize: number = SUPABASE_PAGE_SIZE): Promise<Record<string, string>> {
   const map: Record<string, string> = {};
   let from = 0;
   while (true) {

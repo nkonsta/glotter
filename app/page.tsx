@@ -482,9 +482,6 @@ export default function Home() {
     const exportCodes = resolvedFallback
       ? Array.from(new Set([...selectedCodes, resolvedFallback]))
       : selectedCodes;
-    const hasAll = translations.length > 0
-      && exportCodes.every(code => Object.prototype.hasOwnProperty.call(translations[0].translations, code));
-    if (hasAll) return translations;
     return getTranslationsGrid(selectedProject, exportCodes);
   }
 
@@ -582,21 +579,17 @@ export default function Home() {
       setFallbackMissingCount(0);
       return;
     }
-    const hasLang = translations.length > 0
-      && Object.prototype.hasOwnProperty.call(translations[0].translations, langCode);
-    let rows = translations;
-    if (!hasLang) {
-      try {
-        rows = await getTranslationsGrid(selectedProject, [langCode]);
-      } catch (err) {
-        console.error(err);
-        setFallbackMissingCount(0);
-        return;
-      }
+    let rows: TranslationRow[];
+    try {
+      rows = await getTranslationsGrid(selectedProject, [langCode]);
+    } catch (err) {
+      console.error(err);
+      setFallbackMissingCount(0);
+      return;
     }
     const missing = rows.reduce((acc, row) => acc + ((row.translations[langCode]?.value ?? null) == null ? 1 : 0), 0);
     setFallbackMissingCount(missing);
-  }, [selectedProject, translations]);
+  }, [selectedProject]);
 
   useEffect(() => {
     if (!isExportOpen) return;
