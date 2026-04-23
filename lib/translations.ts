@@ -51,20 +51,31 @@ export async function getTranslationsGrid(projectId: string, languageCodes?: str
 
   const languageIds = languages.map(lang => lang.id);
 
-  // Get translation keys with their translations using a single query with embedding
-  let keysQuery = supabase
-    .from('translation_keys')
-    .select('id, key, translations(id, project_language_id, value)')
-    .eq('project_id', projectId)
-    .order('key');
+  // Paginate translation keys to bypass Supabase/PostgREST's default 1000-row cap
+  const PAGE_SIZE = 1000;
+  const keys: TranslationKeyRecord[] = [];
+  let from = 0;
 
-  if (languageIds.length > 0) {
-    keysQuery = keysQuery.in('translations.project_language_id', languageIds);
+  while (true) {
+    let keysQuery = supabase
+      .from('translation_keys')
+      .select('id, key, translations(id, project_language_id, value)')
+      .eq('project_id', projectId)
+      .order('key')
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (languageIds.length > 0) {
+      keysQuery = keysQuery.in('translations.project_language_id', languageIds);
+    }
+
+    const { data: keysData, error: keysError } = await keysQuery;
+    if (keysError) throw keysError;
+    const page = (keysData ?? []) as TranslationKeyRecord[];
+    keys.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
   }
 
-  const { data: keysData, error: keysError } = await keysQuery;
-  if (keysError) throw keysError;
-  const keys = (keysData ?? []) as TranslationKeyRecord[];
   if (keys.length === 0) return [];
 
   // Build the grid structure
