@@ -30,7 +30,7 @@ interface TranslationKeyRecord {
  * Fetch translations for a project in grid format.
  * Optionally filters to a subset of language codes to reduce payload.
  */
-export async function getTranslationsGrid(projectId: string, languageCodes?: string[]): Promise<TranslationRow[]> {
+export async function getTranslationsGrid(projectId: string, languageCodes?: string[], onProgress?: (loaded: number) => void): Promise<TranslationRow[]> {
   // First, get languages for this project (optionally filtered)
   let langsQuery = supabase
     .from('project_languages')
@@ -72,6 +72,7 @@ export async function getTranslationsGrid(projectId: string, languageCodes?: str
     if (keysError) throw keysError;
     const page = (keysData ?? []) as TranslationKeyRecord[];
     keys.push(...page);
+    onProgress?.(keys.length);
     if (page.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
   }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import packageJson from '@/package.json';
 import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations, getProjectMembership, type ProjectMembership } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import ManageProjectMembersDialog from '@/components/admin/ManageProjectMembersDialog';
@@ -64,6 +65,7 @@ export default function Home() {
   const [translations, setTranslations] = useState<TranslationRow[]>([]);
   const [filteredTranslations, setFilteredTranslations] = useState<TranslationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingCount, setLoadingCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'missing' | 'complete'>('all');
@@ -425,14 +427,19 @@ export default function Home() {
     const loadTranslations = async () => {
       try {
         setLoading(true);
+        setLoadingCount(0);
         const codes = Array.from(visibleLanguages);
-        const trans = await getTranslationsGrid(selectedProject, codes);
+        const trans = await getTranslationsGrid(selectedProject, codes, (loaded) => {
+          if (isMounted) setLoadingCount(loaded);
+        });
         if (!isMounted) return;
         setTranslations(trans);
+        setLoadingCount(null);
         setLoading(false);
       } catch (err) {
         if (!isMounted) return;
         setError('Failed to load translations');
+        setLoadingCount(null);
         setLoading(false);
         console.error(err);
       }
@@ -441,6 +448,7 @@ export default function Home() {
     void loadTranslations();
     return () => {
       isMounted = false;
+      setLoadingCount(null);
     };
   }, [selectedProject, languages, visibleLanguages]);
 
@@ -776,6 +784,16 @@ export default function Home() {
                   <Skeleton key={i} className="h-10 w-full" />
                 ))}
               </div>
+              {loadingCount !== null && (
+                <div className="flex items-center gap-2 px-6 pb-4 text-sm text-muted">
+                  <Spinner size={14} />
+                  <span>
+                    {loadingCount === 0
+                      ? 'Loading translations…'
+                      : `Loading translations… ${loadingCount.toLocaleString()} rows fetched`}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ) : projects.length === 0 ? (
@@ -1107,6 +1125,9 @@ export default function Home() {
           </div>
         )}
       </main>
+      <footer className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex justify-end">
+        <span className="text-xs text-muted/60">v{packageJson.version}</span>
+      </footer>
       {canManageMembers && (
         <ManageProjectMembersDialog
           open={isManageMembersOpen}
