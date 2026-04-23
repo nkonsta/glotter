@@ -448,6 +448,7 @@ export default function Home() {
     void loadTranslations();
     return () => {
       isMounted = false;
+      setLoadingCount(null);
     };
   }, [selectedProject, languages, visibleLanguages]);
 
