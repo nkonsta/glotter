@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import packageJson from '@/package.json';
 import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations, getProjectMembership, type ProjectMembership } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import ManageProjectMembersDialog from '@/components/admin/ManageProjectMembersDialog';
@@ -1123,6 +1124,9 @@ export default function Home() {
           </div>
         )}
       </main>
+      <footer className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex justify-end">
+        <span className="text-xs text-muted/60">v{packageJson.version}</span>
+      </footer>
       {canManageMembers && (
         <ManageProjectMembersDialog
           open={isManageMembersOpen}
