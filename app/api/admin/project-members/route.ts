@@ -225,7 +225,7 @@ export async function POST(req: Request) {
   }
 
   const matchingUser = listResult?.users?.find((u) => u.email?.toLowerCase() === email) ?? null;
-  let targetUser = matchingUser;
+  const targetUser = matchingUser;
 
   if (!targetUser) {
     return NextResponse.json(
