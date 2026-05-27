@@ -390,40 +390,6 @@ export async function updateLanguageName(
 }
 
 /**
- * Bulk: ensure language codes exist and return code -> id map
- */
-export async function getLanguageCodeToIdMap(projectId: string): Promise<Record<string, string>> {
-  const { data, error } = await supabase
-    .from('project_languages')
-    .select('id, language_code')
-    .eq('project_id', projectId)
-    .eq('is_active', true);
-  if (error) throw error;
-  const map: Record<string, string> = {};
-  const rows = (data ?? []) as Array<{ id: string; language_code: string }>;
-  rows.forEach((row) => {
-    map[row.language_code] = row.id;
-  });
-  return map;
-}
-
-/**
- * Bulk upsert translation keys by string value
- */
-export async function bulkUpsertKeys(projectId: string, keys: string[], chunkSize: number = 1000): Promise<void> {
-  const uniqueKeys = Array.from(new Set(keys)).filter(k => !!k);
-  if (uniqueKeys.length === 0) return;
-  for (let i = 0; i < uniqueKeys.length; i += chunkSize) {
-    const chunk = uniqueKeys.slice(i, i + chunkSize);
-    const rows = chunk.map(k => ({ project_id: projectId, key: k }));
-    const { error } = await supabase
-      .from('translation_keys')
-      .upsert(rows, { onConflict: 'project_id,key' });
-    if (error) throw error;
-  }
-}
-
-/**
  * Return key string -> id map for a project
  */
 export async function getKeyToIdMap(projectId: string, pageSize: number = 1000): Promise<Record<string, string>> {
@@ -454,33 +420,43 @@ export async function bulkUpsertTranslations(
 ): Promise<number> {
   if (entries.length === 0) return 0;
 
-  // Ensure keys exist
-  await bulkUpsertKeys(projectId, entries.map(e => e.key));
-
-  // Resolve ids
-  const [keyToId, codeToId] = await Promise.all([
-    getKeyToIdMap(projectId),
-    getLanguageCodeToIdMap(projectId),
-  ]);
-
-  const rows = entries
-    .filter(e => keyToId[e.key] && codeToId[e.langCode])
-    .map(e => ({
-      key_id: keyToId[e.key],
-      project_language_id: codeToId[e.langCode],
-      value: e.value,
-    }));
-
-  let total = 0;
-  for (let i = 0; i < rows.length; i += chunkSize) {
-    const chunk = rows.slice(i, i + chunkSize);
-    const { error } = await supabase
-      .from('translations')
-      .upsert(chunk, { onConflict: 'key_id,project_language_id' });
-    if (error) throw error;
-    total += chunk.length;
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) {
+    throw new Error('Not authenticated. Please sign in again.');
   }
-  return total;
+
+  const response = await fetch('/api/translations/bulk-save', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ projectId, entries, chunkSize }),
+  });
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {}
+
+  if (!response.ok) {
+    const message = payload && typeof payload === 'object' && payload !== null && 'error' in payload
+      ? String((payload as { error?: unknown }).error ?? 'Failed to save translations.')
+      : 'Failed to save translations.';
+    throw new Error(message);
+  }
+
+  const count = payload && typeof payload === 'object' && payload !== null && 'count' in payload
+    ? (payload as { count?: unknown }).count
+    : null;
+
+  if (typeof count !== 'number') {
+    throw new Error('Translation bulk save did not return a count.');
+  }
+
+  return count;
 }
 
 /**
