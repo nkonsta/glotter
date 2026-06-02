@@ -155,6 +155,25 @@ body {
   box-shadow: var(--shadow-card);
 }
 
+/* Theme-aware hero image: show the variant matching the active theme */
+.hero-theme-light {
+  display: block;
+}
+
+.hero-theme-dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .hero-theme-light,
+.dark .hero-theme-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .hero-theme-dark,
+.dark .hero-theme-dark {
+  display: block;
+}
+
 /* Modern select dropdown styling */
 select {
   background-image: none;

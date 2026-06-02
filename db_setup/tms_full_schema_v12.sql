@@ -134,33 +134,40 @@ CREATE INDEX idx_project_invites_email ON project_invites(email);
 -- 4) Helper Functions
 --------------------------------------------------------------------------------
 
+-- All helpers are SECURITY DEFINER with a pinned, empty search_path and
+-- fully-qualified names to prevent search_path injection (Supabase lint 0011).
+
 CREATE OR REPLACE FUNCTION is_platform_admin()
-RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE AS $$
-  SELECT EXISTS (SELECT 1 FROM platform_admins WHERE user_id = auth.uid());
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE
+SET search_path = '' AS $$
+  SELECT EXISTS (SELECT 1 FROM public.platform_admins WHERE user_id = auth.uid());
 $$;
 
 CREATE OR REPLACE FUNCTION is_project_member(p_project_id UUID)
-RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE AS $$
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE
+SET search_path = '' AS $$
   SELECT EXISTS (
-    SELECT 1 FROM project_members
+    SELECT 1 FROM public.project_members
     WHERE project_id = p_project_id AND user_id = auth.uid()
-  ) OR is_platform_admin();
+  ) OR public.is_platform_admin();
 $$;
 
 CREATE OR REPLACE FUNCTION is_project_owner(p_project_id UUID)
-RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE AS $$
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE
+SET search_path = '' AS $$
   SELECT EXISTS (
-    SELECT 1 FROM project_members
+    SELECT 1 FROM public.project_members
     WHERE project_id = p_project_id AND user_id = auth.uid() AND role = 'owner'
-  ) OR is_platform_admin();
+  ) OR public.is_platform_admin();
 $$;
 
 CREATE OR REPLACE FUNCTION can_view_language(p_project_id UUID, p_lang TEXT)
-RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE AS $$
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE
+SET search_path = '' AS $$
   SELECT
-    is_platform_admin()
+    public.is_platform_admin()
     OR EXISTS (
-      SELECT 1 FROM project_members
+      SELECT 1 FROM public.project_members
       WHERE project_id = p_project_id
         AND user_id = auth.uid()
         AND (
@@ -171,11 +178,12 @@ RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE AS $$
 $$;
 
 CREATE OR REPLACE FUNCTION can_edit_language(p_project_id UUID, p_lang TEXT)
-RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE AS $$
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE
+SET search_path = '' AS $$
   SELECT
-    is_platform_admin()
+    public.is_platform_admin()
     OR EXISTS (
-      SELECT 1 FROM project_members
+      SELECT 1 FROM public.project_members
       WHERE project_id = p_project_id
         AND user_id = auth.uid()
         AND (
@@ -190,15 +198,16 @@ $$;
 --------------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION log_translation_change()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql
+SET search_path = '' AS $$
 BEGIN
   IF (TG_OP = 'UPDATE' AND OLD.value IS DISTINCT FROM NEW.value) THEN
-    INSERT INTO translation_history (translation_id, old_value, new_value, updated_by)
+    INSERT INTO public.translation_history (translation_id, old_value, new_value, updated_by)
     VALUES (NEW.id, OLD.value, NEW.value, NEW.updated_by);
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 CREATE TRIGGER translation_audit_trigger
   AFTER UPDATE ON translations

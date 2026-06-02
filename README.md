@@ -1,341 +1,223 @@
-# Glotter – Translation Management
+# Glotter — Translation Management
 
-A Next.js-based web application for managing multi-language translations. Features an accessible UI, inline editing, JSON export, and a Supabase backend.
+A self-hostable, multi-language translation manager. Import your locale files,
+edit every language side by side, let AI draft what's missing, and control who
+can see and edit which languages — all backed by Supabase.
 
----
+- **Public landing page** at `/` (statically rendered).
+- **The app** lives at `/dashboard`, behind authentication.
 
-## 🎯 Features
-
-### ✅ Translation Grid Interface
-- **Grid View**: Translation keys as rows, languages as columns
-- **Inline Editing**: Click any cell to edit, Enter to save, Escape to cancel
-- **Missing Translation Indicators**: Empty cells highlighted visually
-- **Real-time Updates**: Changes saved immediately to Supabase
-- **Performance**: Optimized for thousands of keys; pagination included
-
-### ✅ Project Management
-- **Project Selector**: Dropdown to switch between projects
-- **Language Display**: Shows language codes and names in headers
-
-### ✅ Data Layer
-- **Efficient Queries**: Parallel fetching of languages and translations
-- **Type Safety**: Full TypeScript support
-- **Error Handling**: Graceful error messages for common issues
+🔗 **Live:** <https://glotter.vercel.app/>
 
 ---
 
-## 🚀 Quick Start
+## Features
 
-### 1. Configure Supabase
+- **Side-by-side grid** — translation keys as rows, languages as columns, inline editing.
+- **Per-language JSON import** and export (single file or per-language).
+- **AI-assisted translation** — draft missing values across languages (optional, OpenAI-compatible).
+- **Role-based access control** — platform admins, per-project owners, and members with per-language view/edit permissions.
+- **Audit trail** — translation changes are logged with author and timestamp.
+- **Missing-translation indicators**, search, and All/Missing/Complete filters.
 
-Copy the example environment file and fill in your Supabase credentials:
+---
+
+## Tech stack
+
+Next.js 16 (App Router) · React 19 · TypeScript · Supabase (Postgres + Auth) ·
+TanStack Table · Tailwind CSS v4 · Radix UI.
+
+**Requirements:** Node.js 20+ and a Supabase project (free tier is fine).
+
+---
+
+## Self-hosting setup
+
+### 1. Create a Supabase project
+
+Create one at [supabase.com](https://supabase.com). You'll need three values
+from **Project Settings → API**:
+
+- **Project URL**
+- **anon public** key
+- **service_role** key (secret — server-side only)
+
+### 2. Create the database schema
+
+In the Supabase dashboard, open **SQL Editor**, paste the contents of
+[`db_setup/tms_full_schema_v12.sql`](./db_setup/tms_full_schema_v12.sql), and
+run it. This creates all tables, RLS policies, and helper functions.
+
+> Ignore `db_setup/tms_acl_v12.sql` — it's a migration for upgrading an older
+> v11 database, not for fresh installs. See [`db_setup/README.md`](./db_setup/README.md).
+
+### 3. Configure environment variables
 
 ```bash
 cp env.example .env.local
 ```
 
-Then edit `.env.local` with your actual Supabase credentials:
+Edit `.env.local`:
 
-```bash
-NEXT_PUBLIC_SUPABASE_URL=your-supabase-url-here
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key-here
-```
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase Project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon public key (client) |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Service role key. Server-only — used for saving translations and admin actions. **Never expose to the client.** |
+| `NEXT_PUBLIC_SITE_URL` | Recommended | Public origin (e.g. `http://localhost:3000`). Used for social-preview (Open Graph) image URLs. |
+| `OPENAI_API_KEY` | Optional | Enables AI translation. Without it, the rest of the app works; AI fill is disabled. |
+| `OPENAI_MODEL`, `OPENAI_BASE_URL`, `AI_*`, `NEXT_PUBLIC_AI_*` | Optional | Tune the AI provider/model and batching. See `env.example`. |
 
-How to get these:
-1. Go to your Supabase project dashboard
-2. Navigate to Settings → API
-3. Copy "Project URL" → Use as `NEXT_PUBLIC_SUPABASE_URL`
-4. Copy "anon public" key → Use as `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+> The service role key bypasses Row-Level Security. It is only read server-side
+> (in `app/api/**`) and is never sent to the browser. Keep it secret.
 
-### 2. Install Dependencies
+### 4. Configure Supabase Auth
+
+In **Authentication → URL Configuration → Redirect URLs**, add the app entry
+point so sign-up confirmation and password-reset links land in the app:
+
+- `http://localhost:3000/dashboard`
+- `https://your-domain.com/dashboard` (once deployed)
+
+This instance is **admin-provisioned**: signing up creates an account, but a new
+user has no access until a platform admin grants it. For a closed instance you
+can disable public sign-ups in Supabase and create users from the in-app
+**Manage users** screen instead.
+
+### 5. Create the first platform admin
+
+This is the one manual step, and the app is unusable without it — there's no UI
+to create the *first* admin.
+
+1. Create a user account. Easiest: **Authentication → Users → Add user** in the
+   Supabase dashboard (enable "Auto Confirm User"). Or sign up through the app at
+   `/dashboard` and confirm the email.
+2. Copy that user's **User UID** from the Users list.
+3. In the **SQL Editor**, run:
+
+   ```sql
+   insert into platform_admins (user_id) values ('PASTE-USER-UID-HERE');
+   ```
+
+That user is now a platform admin: they can create projects, manage users, and
+assign per-project owners and members from the app.
+
+### 6. Install and run
 
 ```bash
 npm install
-```
-
-### 3. Start Development Server
-
-```bash
 npm run dev
 ```
 
-### 4. Open Browser
-
-Navigate to http://localhost:3000
+Open <http://localhost:3000> for the landing page, or
+<http://localhost:3000/dashboard> to sign in.
 
 ---
 
-## 📁 Project Structure
+## Access model
+
+| Role | Scope | Can do |
+| --- | --- | --- |
+| **Platform admin** | Whole instance | Everything: all projects, manage users, assign owners/members, edit any language. Bootstrapped via SQL (step 5). |
+| **Project owner** | One project | Full access to that project — all languages, keys, languages, and members. |
+| **Member** | One project | View/edit only the specific languages granted to them (per-language permissions). |
+
+Owners and members are assigned by a platform admin (or project owner) through
+the **Manage users** / project-members screens. Permissions are enforced at the
+database level by Row-Level Security, not just in the UI.
+
+---
+
+## Usage
+
+### Projects & languages
+- **Create a project** from the header dropdown ("New project…"). Optionally
+  provide initial languages as comma-separated codes (`en, fr, de`) or
+  `code:name` pairs (`en:English`). Codes are lowercased.
+- **Manage languages** ("Manage languages…") to add/rename/remove languages.
+  Removing a language deletes its translations. You can't remove the last one.
+- **Delete a project** ("Delete project…", type the name to confirm). Cascades
+  to its languages, keys, and translations.
+
+### Editing translations
+1. Select a project. Keys and their values per language load into the grid.
+2. Click a cell, type, **Enter** to save or **Escape** to cancel (optimistic UI).
+3. Missing translations are highlighted; use the All/Missing/Complete filter and
+   search to navigate.
+
+### Import / export
+- **Import** per-language JSON to populate values.
+- **Export** all languages as one JSON file, or per-language files.
+
+### AI fill (optional)
+With an OpenAI key configured, use **AI fill missing…** to draft missing
+translations across languages, then review inline before saving.
+
+---
+
+## Deploy on Vercel
+
+1. Import the repo into Vercel.
+2. Add the same environment variables from step 3 (set `NEXT_PUBLIC_SITE_URL` to
+   your production URL).
+3. Add `https://your-domain.com/dashboard` to the Supabase Auth redirect URLs
+   (step 4).
+
+The landing page (`/`) is statically rendered; the app (`/dashboard`) runs
+client-side against Supabase.
+
+---
+
+## Security & production hardening
+
+The schema is secure by default — Row-Level Security is enabled on every table,
+and the access-control helper functions run with a pinned `search_path`. A few
+things still live in the Supabase dashboard that are worth setting before you
+expose an instance publicly:
+
+- **Enable leaked-password protection** (Authentication → Policies) so compromised
+  passwords are rejected via [HaveIBeenPwned](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
+- **Consider enabling MFA** options (Authentication → Providers) for account security.
+- **Restrict sign-ups** if you want a closed instance — disable public sign-ups
+  and provision users from the in-app **Manage users** screen.
+- **Keep `SUPABASE_SERVICE_ROLE_KEY` secret** — it's server-only and bypasses RLS.
+- Your Supabase **URL and anon key are public by design** (they ship in the client
+  bundle); RLS is what protects your data, so don't disable it.
+
+Run Supabase's database linter (or `get_advisors`) periodically to catch new issues.
+
+---
+
+## Troubleshooting
+
+- **Can't see anything after signing in** — you're not a platform admin yet and
+  haven't been added to a project. Complete step 5.
+- **Saving translations fails** — confirm `SUPABASE_SERVICE_ROLE_KEY` is set.
+- **Sign-up / reset links go to the wrong place** — add `/dashboard` to the
+  Supabase redirect URLs (step 4).
+- **Empty project list as a non-admin** — expected; an admin must grant project
+  membership.
+- Check the browser console and Supabase logs for details.
+
+---
+
+## Project structure
 
 ```
 glotter/
 ├── app/
-│   ├── page.tsx                    # Main application page
-│   ├── layout.tsx                  # App layout
-│   └── globals.css                 # Global styles & theme tokens
-├── components/
-│   ├── TranslationGrid.tsx         # Grid component with inline editing
-│   ├── ThemeToggle.tsx             # Theme toggle (useSyncExternalStore)
-│   └── ui/                         # UI primitives (Button, Dialog, Dropdown, Skeleton, Tooltip, SegmentedControl, Spinner)
-├── lib/
-│   ├── supabase.ts                 # Supabase client configuration
-│   ├── translations.ts             # Database query functions
-│   └── theme.ts                    # Theme store (persistence + system preference)
-├── .env.local                      # Environment variables (create this)
-├── package.json                    # Dependencies
-└── README.md                       # This file
+│   ├── page.tsx                 # Public landing page (/)
+│   ├── layout.tsx               # Root layout (theme, fonts)
+│   ├── opengraph-image.tsx      # Generated social-preview image
+│   ├── dashboard/               # Authenticated app (/dashboard)
+│   │   ├── layout.tsx           # Auth + toast providers
+│   │   └── page.tsx             # Main translation app
+│   └── api/                     # Server routes (use the service role)
+│       ├── translations/        # save, bulk-save
+│       ├── admin/               # users, project-members
+│       └── ai-translate/        # AI drafting
+├── components/                  # Grid, auth, UI primitives
+├── lib/                         # Supabase clients, queries, theme, AI
+├── db_setup/                    # SQL schema + migration (see its README)
+└── env.example                  # Environment variable template
 ```
-
----
-
-## 🎨 Theming & Accessibility
-
-- Light/dark tokens defined in `app/globals.css` and applied to `:root`.
-- Theme is persisted to `localStorage` and synced via `lib/theme.ts`.
-- Visible focus rings; interactive components use Radix for accessibility.
-- UI primitives documented in `components/ui/README.md`.
-
----
-
-## 📖 Usage
-
-### Onboarding: Projects & Languages
-1. Create a project
-   - From the header Project dropdown, choose "New project…" (or use the empty‑state button).
-   - Enter a project name and optional initial languages (comma‑separated codes, e.g. `en, fr, de` or code:name pairs like `en:English`). Codes are normalized to lowercase.
-   - The app adds at least one language (defaults to `en`).
-2. Manage languages for a project
-   - From the Project dropdown (or the Columns menu footer), select "Manage languages…".
-   - Add a language by code (e.g. `pt-br`) and optional display name. Codes are normalized to lowercase. You can edit a language's name later in "Manage languages…".
-   - Remove a language to delete all its translations in this project.
-   - You cannot remove the last remaining language; add another first.
-3. Delete a project
-   - From the Project dropdown, select "Delete project…".
-   - Type the project name to confirm. This removes the project, its languages, keys, and translations.
-
-### Viewing Translations
-1. Select a project from the dropdown
-2. View translation keys and their values across languages
-3. Missing translations are visually highlighted
-4. See translation and language counts at the top
-
-### Editing Translations
-1. Click any cell to edit
-2. Type your changes
-3. Press Enter to save or Escape to cancel
-4. Changes are immediately saved to Supabase (optimistic UI)
-
-### Adding New Keys
-Use the "+ Add New Key" button in the toolbar to create a key in the selected project. The grid refreshes after creation.
-
-### Exporting
-Use the Export menu to download:
-- All languages (single JSON)
-- Individual language JSON files
-
----
-
-## 🗄️ Database Schema
-
-The application expects these tables in Supabase:
-
-### projects
-```sql
-CREATE TABLE projects (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-### project_languages
-```sql
-CREATE TABLE project_languages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
-  language_code TEXT NOT NULL,
-  language_name TEXT,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(project_id, language_code)
-);
-```
-
-### translation_keys
-```sql
-CREATE TABLE translation_keys (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
-  key TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(project_id, key)
-);
-```
-
-### translations
-```sql
-CREATE TABLE translations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  key_id UUID REFERENCES translation_keys(id) ON DELETE CASCADE,
-  project_language_id UUID REFERENCES project_languages(id) ON DELETE CASCADE,
-  value TEXT,
-  updated_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(key_id, project_language_id)
-);
-```
-
----
-
-## ✅ Testing Checklist
-
-- [ ] App loads without errors
-- [ ] Projects appear in dropdown
-- [ ] Translation grid displays keys and values
-- [ ] Can click a cell to edit
-- [ ] Changes save when pressing Enter
-- [ ] Edits cancel when pressing Escape
-- [ ] Missing translations show visual highlight
-- [ ] Can switch between projects
-- [ ] Performance is smooth with thousands of keys
-
-### CRUD Flow (Projects & Languages)
-- [ ] Create a project (with and without custom initial languages)
-- [ ] Selected project auto-loads languages and empty grid
-- [ ] Add a language (e.g., `fr`) and see column appear after reload
-- [ ] Remove a language and confirm its column/translations are gone
-- [ ] Block removing the last remaining language (error message shown)
-- [ ] Delete a project after typing its exact name; project disappears and UI resets
-
-Notes:
-- Database schema uses `ON DELETE CASCADE` FKs, so deletes do not leave orphan rows.
-- Language codes are accepted as provided (case not enforced at DB); UI treats them verbatim.
-
----
-
-## 🔧 Technical Details
-
-### Core Components
-
-#### lib/supabase.ts
-- Supabase client initialization
-- TypeScript interfaces for database tables
-
-#### lib/translations.ts
-Database query functions:
-- `getTranslationsGrid(projectId)`
-- `updateTranslation(translationId, value)`
-- `createTranslation(keyId, languageId, value)`
-- `getProjects()`
-- `getProjectLanguages(projectId)`
-- `createProject(name, initialLanguages?)`
-- `deleteProject(projectId)`
-- `addLanguage(projectId, code, name?)`
-- `deleteLanguage(projectId, code)`
-
-#### lib/theme.ts
-- Theme store with persistence and system preference fallback
-
-#### components/TranslationGrid.tsx
-Interactive grid component featuring:
-- Keys as rows; languages as columns
-- Click-to-edit inline editing
-- Visual indicators for missing translations
-- Save on Enter; cancel on Escape
-- Pagination for large datasets
-
-#### app/page.tsx
-Main application page with:
-- Project selector dropdown (Radix DropdownMenu)
-- Filter SegmentedControl (All/Missing/Complete)
-- Export menus (all languages and per-language JSON)
-- Add New Key dialog
-- Loading and empty states
-
-### Data Flow
-```
-User clicks cell →
-  Component enters edit mode →
-  User types →
-  User presses Enter →
-  updateTranslation()/createTranslation() →
-  Supabase updated →
-  Local state updated →
-  Grid re-renders
-```
-
-### Grid Performance
-- TanStack Table handles efficient rendering
-- Client-side pagination by default
-- For very large projects, consider:
-  - Virtual scrolling via `@tanstack/virtual`
-  - Server-side pagination
-  - Lazy loading
-
-### Missing Translation Detection
-- Cells with `null` or empty string values are highlighted
-- Translation record may not exist (new key) or value may be empty
-
----
-
-## 🚧 Not Yet Implemented
-
-1. **AI-Assisted Key Creation**
-   - Optional: integrate OpenAI for automatic translations on key creation
-2. **Bulk Export Enhancements**
-   - Optional ZIP download for all languages
-3. **Data Import**
-   - UI for importing JSON/MariaDB exports
-4. **Authentication**
-   - User login and project-level permissions
-
----
-
-## 🛠️ Technologies
-
-- Next.js 15 (App Router)
-- TypeScript
-- Supabase
-- TanStack Table
-- Tailwind CSS v4
-- Radix UI
-
----
-
-## 🐛 Troubleshooting
-
-If you encounter issues:
-1. Check Supabase connection: verify `.env.local`
-2. Check browser console for errors
-3. Check Supabase logs
-4. Verify database schema
-5. Check RLS policies (may disable for local testing)
-
----
-
-## 🚀 Deploy on Vercel
-
-The easiest way to deploy is using the Vercel Platform.
-See Next.js deployment docs for details.
-
----
-
-## 📊 Status
-
-Current State: ✅ Foundation complete and ready for testing
-
-What works:
-- Translation grid with inline editing
-- Project selection
-- JSON export
-- Missing translation indicators
-
-What's next:
-- Import/AI translation/auth enhancements
-
-Last updated: 2025-10-10
-
----
-
-## 📝 Changelog
-
-- 2025-10-10: Fixed caret jumping to the start when typing/backspace in grid editor. The editor now uses a localized cell state and stable column renderers; Enter-to-save and blur-to-save are unchanged.

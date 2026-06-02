@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           password,
           options: {
             emailRedirectTo:
-              typeof window !== "undefined" ? `${window.location.origin}` : undefined,
+              typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined,
           },
         }),
       signOut: () => supabase.auth.signOut(),
@@ -74,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         supabase.auth.resetPasswordForEmail(email, {
           redirectTo:
             typeof window !== "undefined"
-              ? `${window.location.origin}`
+              ? `${window.location.origin}/dashboard`
               : undefined,
         }),
     }),
