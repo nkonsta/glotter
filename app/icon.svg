@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Simple flat SVG avatar converted from chinese.png (approximation) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Avatar">
+  <defs>
+    <clipPath id="round-shoulders">
+      <rect x="96" y="320" width="320" height="160" rx="48" ry="48" />
+    </clipPath>
+  </defs>
+
+  <!-- Background transparent -->
+  <g fill="none" fill-rule="evenodd">
+    <!-- Ears -->
+    <circle cx="108" cy="216" r="36" fill="#F7CDBF"/>
+    <circle cx="404" cy="216" r="36" fill="#F7CDBF"/>
+
+    <!-- Head -->
+    <circle cx="256" cy="216" r="122" fill="#FADBD0"/>
+
+    <!-- Hair sideburns -->
+    <path d="M140 196a24 24 0 0 0 48 0v-20h-48v20z" fill="#1C1C1C"/>
+    <path d="M324 196a24 24 0 0 0 48 0v-20h-48v20z" fill="#1C1C1C"/>
+
+    <!-- Hat base -->
+    <path d="M134 158c17-64 70-104 122-104s105 40 122 104H134z" fill="#D33A53"/>
+    <!-- Hat inner shade -->
+    <path d="M182 158c13-46 47-76 74-76s61 30 74 76H182z" fill="#A2273E"/>
+    <!-- Hat band -->
+    <rect x="100" y="158" width="312" height="36" rx="6" fill="#F2C84B"/>
+    <!-- Hat top jewel -->
+    <circle cx="256" cy="54" r="22" fill="#F2C84B"/>
+
+    <!-- Eyes (happy) -->
+    <path d="M182 218c18-18 48-18 66 0" stroke="#1C1C1C" stroke-width="16" stroke-linecap="round" fill="none"/>
+    <path d="M264 218c18-18 48-18 66 0" stroke="#1C1C1C" stroke-width="16" stroke-linecap="round" fill="none"/>
+
+    <!-- Smile -->
+    <path d="M208 256c32 32 64 32 96 0" stroke="#1C1C1C" stroke-width="16" stroke-linecap="round" fill="none"/>
+
+    <!-- Cheeks -->
+    <circle cx="196" cy="252" r="16" fill="#F59BB2"/>
+    <circle cx="316" cy="252" r="16" fill="#F59BB2"/>
+
+    <!-- Neck -->
+    <rect x="228" y="300" width="56" height="52" rx="10" fill="#EFC6B8"/>
+
+    <!-- Robe -->
+    <g clip-path="url(#round-shoulders)">
+      <rect x="96" y="316" width="320" height="176" rx="56" fill="#D33A53"/>
+      <!-- Inner robe panel -->
+      <path d="M256 316c-36 0-80 52-80 124v52h160v-52c0-72-44-124-80-124z" fill="#F2C84B"/>
+      <!-- Robe shading -->
+      <path d="M256 316c-51 0-92 46-92 104v72h32v-60c0-64 27-116 60-116z" fill="#C7354C"/>
+      <path d="M256 316c51 0 92 46 92 104v72h-32v-60c0-64-27-116-60-116z" fill="#C7354C"/>
+    </g>
+
+    <!-- Robe center opening -->
+    <rect x="236" y="316" width="40" height="176" fill="#F2C84B"/>
+
+    <!-- Shoulders trim -->
+    <path d="M144 388h48v32h-48zM320 388h48v32h-48z" fill="#F2C84B"/>
+  </g>
+</svg>
+
+

@@ -12,7 +12,7 @@ import heroDark from "@/public/hero-dark.jpg";
 
 const GITHUB_URL = "https://github.com/nkonsta/glotter";
 
-const TITLE = "Glotter — localization management with AI-assisted translation";
+const TITLE = "Glotter — AI-assisted localization management";
 const DESCRIPTION =
   "Import your language files, edit every language side by side, and let AI draft the rest. A multi-language translation manager built with Next.js and Supabase.";
 
