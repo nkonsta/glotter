@@ -95,7 +95,7 @@ export default function AuthScreen() {
         <div className="space-y-2 text-center">
           <Image
             src="/chinese.svg"
-            alt="Friendly character illustration"
+            alt="Glotter"
             width={96}
             height={96}
             className="mx-auto h-24 w-24"
