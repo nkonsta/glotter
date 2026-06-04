@@ -174,6 +174,155 @@ body {
   display: block;
 }
 
+/* ============================================================
+   Landing page — editorial "type specimen" theme.
+   Scoped to .landing-page so the dashboard/app tokens are untouched.
+   ============================================================ */
+.landing-page {
+  --paper: 40 41% 97%;
+  --paper-2: 38 34% 93%;
+  --ink: 28 11% 13%;
+  --ink-soft: 30 7% 41%;
+  --rule: 32 16% 85%;
+  --accent: 12 80% 49%; /* editor's vermillion */
+  background-color: hsl(var(--paper));
+  color: hsl(var(--ink));
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+:root[data-theme="dark"] .landing-page,
+.dark .landing-page {
+  --paper: 26 14% 9%;
+  --paper-2: 26 12% 13%;
+  --ink: 40 38% 95%;
+  --ink-soft: 36 11% 66%;
+  --rule: 30 10% 22%;
+  --accent: 14 86% 62%;
+}
+
+.font-display {
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-optical-sizing: auto;
+}
+
+.landing-page ::selection {
+  background-color: hsl(var(--accent) / 0.22);
+  color: hsl(var(--ink));
+}
+
+.bg-paper {
+  background-color: hsl(var(--paper));
+}
+.bg-paper-2 {
+  background-color: hsl(var(--paper-2));
+}
+.bg-ink {
+  background-color: hsl(var(--ink));
+}
+.text-ink {
+  color: hsl(var(--ink));
+}
+.text-ink-soft {
+  color: hsl(var(--ink-soft));
+}
+.text-paper {
+  color: hsl(var(--paper));
+}
+.text-accent {
+  color: hsl(var(--accent));
+}
+.border-rule {
+  border-color: hsl(var(--rule));
+}
+.divide-rule > * + * {
+  border-color: hsl(var(--rule));
+}
+
+/* Paper grain — subtle fractal-noise overlay for atmosphere */
+.landing-grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+:root[data-theme="dark"] .landing-grain::before,
+.dark .landing-grain::before {
+  opacity: 0.06;
+}
+
+/* Staggered load reveal */
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.landing-rise {
+  opacity: 0;
+  animation: landing-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
+/* AI-drafting shimmer in the specimen */
+@keyframes landing-shimmer {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.landing-shimmer {
+  animation: landing-shimmer 1.9s ease-in-out infinite;
+}
+
+/* Scroll-into-view reveal for below-the-fold sections (see components/Reveal.tsx) */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-rise {
+    animation: none;
+    opacity: 1;
+  }
+  .landing-shimmer {
+    animation: none;
+  }
+  .reveal,
+  .reveal-in {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Drop cap for the editorial intro */
+.drop-cap::first-letter {
+  font-family: var(--font-fraunces), Georgia, serif;
+  float: left;
+  font-size: 3.6em;
+  line-height: 0.8;
+  padding: 0.06em 0.12em 0 0;
+  color: hsl(var(--accent));
+  font-weight: 600;
+}
+
 /* Modern select dropdown styling */
 select {
   background-image: none;

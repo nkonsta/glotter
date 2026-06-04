@@ -40,6 +40,8 @@ const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="51
 </svg>`;
 const LOGO_SRC = `data:image/svg+xml;base64,${Buffer.from(LOGO_SVG).toString("base64")}`;
 
+// Editorial "type specimen" card matching the landing page: warm paper, ink,
+// and a vermillion accent, with one greeting shown across languages.
 export default function OpengraphImage() {
   return new ImageResponse(
     (
@@ -50,23 +52,48 @@ export default function OpengraphImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          padding: "72px",
-          background: "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
-          color: "#F8FAFC",
+          padding: "80px",
+          background: "#FBF8F1",
+          color: "#221C18",
           fontFamily: "sans-serif",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-          <img src={LOGO_SRC} width={72} height={72} alt="" />
-          <span style={{ fontSize: 44, fontWeight: 700, letterSpacing: "-0.02em" }}>Glotter</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
+            <img src={LOGO_SRC} width={64} height={64} alt="" />
+            <span style={{ fontSize: 40, fontWeight: 700, letterSpacing: "-0.02em" }}>Glotter</span>
+          </div>
+          <span
+            style={{ fontSize: 22, letterSpacing: "0.22em", textTransform: "uppercase", color: "#9A8F80" }}
+          >
+            Localization management
+          </span>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          <span style={{ fontSize: 60, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-0.03em", maxWidth: "900px" }}>
-            Localization management with AI-assisted translation
+        <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              fontSize: 78,
+              fontWeight: 700,
+              lineHeight: 1.05,
+              letterSpacing: "-0.03em",
+              maxWidth: "1000px",
+            }}
+          >
+            <span>Every language,&nbsp;</span>
+            <span style={{ color: "#D6431E" }}>side by side.</span>
+          </div>
+          <span style={{ fontSize: 30, letterSpacing: "0.04em", color: "#6E665F" }}>
+            Hello · Hola · Bonjour · Hallo · Ciao · Olá
           </span>
-          <span style={{ fontSize: 30, color: "#94A3B8", maxWidth: "880px" }}>
-            Import your language files, edit every language side by side, and let AI draft the rest.
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <div style={{ width: "72px", height: "4px", background: "#D6431E" }} />
+          <span style={{ fontSize: 27, color: "#6E665F", maxWidth: "900px" }}>
+            Import your locale files, edit every language side by side, and let AI draft the rest.
           </span>
         </div>
       </div>
