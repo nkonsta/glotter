@@ -495,7 +495,7 @@ export default function ManageProjectMembersDialog({
                 onChange={(event) => setEmail(event.target.value)}
                 required
                 placeholder="translator@example.com"
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
               />
             </div>
 
@@ -692,7 +692,7 @@ export default function ManageProjectMembersDialog({
                               )}
                             </Button>
                             <Button
-                              variant="destructive"
+                              variant="destructiveGhost"
                               size="sm"
                               onClick={() => setConfirmRemoveMemberId(member.id)}
                               disabled={updatingMemberId === member.id || removingMemberId === member.id}

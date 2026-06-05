@@ -628,7 +628,7 @@ export default function Home() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface text-foreground">
         <div className="bg-surface-elevated p-8 rounded-xl shadow-card border border-border max-w-md">
-          <h2 className="text-xl font-bold text-danger mb-4">Error</h2>
+          <h2 className="font-display text-2xl font-semibold text-danger mb-4">Error</h2>
           <p className="mb-4">{error}</p>
           <p className="text-sm text-muted">
             Make sure you’ve added your Supabase credentials to .env.local:
@@ -649,7 +649,7 @@ export default function Home() {
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-2">
               <Image src="/chinese.svg" alt="Glotter" width={28} height={28} className="h-7 w-7" priority />
-              <h1 className="text-lg font-semibold tracking-tight">Glotter</h1>
+              <h1 className="font-display text-xl font-semibold tracking-tight">Glotter</h1>
             </div>
             {projects.length > 0 && (
               <>
@@ -731,15 +731,15 @@ export default function Home() {
             )}
             <button
               onClick={() => setIsChangePasswordOpen(true)}
-              className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-foreground cursor-pointer hover:bg-surface-hover hover:border-primary/50 hover:text-primary transition-colors group sm:max-w-[220px]"
+              className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1 text-xs text-foreground cursor-pointer hover:bg-surface-hover hover:border-[hsl(var(--accent)/0.5)] hover:text-[hsl(var(--accent))] transition-colors group sm:max-w-[220px]"
               title="Edit profile"
             >
-              <svg className="h-4 w-4 text-muted group-hover:text-primary transition-colors shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <svg className="h-4 w-4 text-muted group-hover:text-[hsl(var(--accent))] transition-colors shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 10-8 0 4 4 0 008 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 21a7 7 0 0116 0" />
               </svg>
               <span className="hidden sm:inline truncate">{(user.user_metadata?.display_name as string | undefined) ?? user.email}</span>
-              <svg className="h-3 w-3 text-muted group-hover:text-primary transition-colors shrink-0 sm:ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <svg className="h-3 w-3 text-muted group-hover:text-[hsl(var(--accent))] transition-colors shrink-0 sm:ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a4 4 0 01-1.414.93l-3 1 1-3a4 4 0 01.93-1.414z" />
               </svg>
             </button>
@@ -798,7 +798,7 @@ export default function Home() {
           </div>
         ) : projects.length === 0 ? (
           <div className="bg-surface-elevated p-12 rounded-xl shadow-card text-center border border-border">
-            <h2 className="text-2xl font-bold mb-3">No Projects Found</h2>
+            <h2 className="font-display text-3xl font-semibold tracking-tight mb-3">No Projects Found</h2>
             <p className="text-muted">
               Create a project to get started.
             </p>
@@ -810,7 +810,7 @@ export default function Home() {
           </div>
         ) : !selectedProject ? (
           <div className="bg-surface-elevated p-12 rounded-xl shadow-card text-center border border-border">
-            <h2 className="text-2xl font-bold mb-3">Select a Project</h2>
+            <h2 className="font-display text-3xl font-semibold tracking-tight mb-3">Select a Project</h2>
             <p className="text-muted">
               Choose a project from the dropdown above to view and manage translations.
             </p>
@@ -822,19 +822,19 @@ export default function Home() {
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="text-sm font-medium text-muted">
                     <span className="text-lg font-bold">{translations.length}</span>
-                    <span className="ml-1.5 text-muted">keys</span>
+                    <span className="ml-1.5 label-mono text-[0.6875rem] text-muted">keys</span>
                   </div>
                   <div className="h-6 w-px bg-border"></div>
                   <div className="text-sm font-medium text-muted">
                     <span className="text-lg font-bold">{languages.length}</span>
-                    <span className="ml-1.5 text-muted">languages</span>
+                    <span className="ml-1.5 label-mono text-[0.6875rem] text-muted">languages</span>
                   </div>
                   {filterMode !== 'all' && (
                     <>
                       <div className="h-6 w-px bg-border"></div>
                       <div className="text-sm font-medium text-muted">
                         <span className="text-lg font-bold text-warning">{filteredTranslations.length}</span>
-                        <span className="ml-1.5 text-muted">filtered</span>
+                        <span className="ml-1.5 label-mono text-[0.6875rem] text-muted">filtered</span>
                       </div>
                     </>
                   )}
@@ -1317,7 +1317,7 @@ export default function Home() {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-40 h-2 bg-surface-hover rounded">
-                    <div className="h-2 bg-primary rounded" style={{ width: `${Math.round((aiChunking.processed / Math.max(1, aiChunking.total)) * 100)}%` }} />
+                    <div className="h-2 bg-[hsl(var(--accent))] rounded" style={{ width: `${Math.round((aiChunking.processed / Math.max(1, aiChunking.total)) * 100)}%` }} />
                   </div>
                   <Button size="sm" variant="outline" onClick={() => { aiCancelRef.current.cancelled = true; aiCancelRef.current.controller?.abort(); }}>Cancel</Button>
                 </div>
@@ -1642,7 +1642,7 @@ export default function Home() {
                       </Button>
                     )}
                     <Button
-                      variant="destructive"
+                      variant="destructiveGhost"
                       size="sm"
                       onClick={async () => {
                         if (!selectedProject) return;

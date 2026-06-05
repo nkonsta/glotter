@@ -103,7 +103,7 @@ export const DropdownMenuLabel = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <DropdownMenuPrimitive.Label
     ref={ref}
-  className={cn("px-2 py-1.5 text-xs font-medium text-muted uppercase tracking-wide", inset && "pl-8", className)}
+  className={cn("label-mono px-2 py-1.5 text-[0.6875rem] font-medium text-muted", inset && "pl-8", className)}
     {...props}
   />
 ));

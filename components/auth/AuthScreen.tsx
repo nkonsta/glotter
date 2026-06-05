@@ -101,7 +101,7 @@ export default function AuthScreen() {
             className="mx-auto h-24 w-24"
             priority
           />
-          <h1 className="text-2xl font-semibold text-foreground">Glotter</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">Glotter</h1>
           <p className="text-muted text-sm">
             {mode === "sign-in" && "Sign in to manage your translation projects."}
             {mode === "sign-up" && "Create an account to start managing translations with your team."}
@@ -118,7 +118,7 @@ export default function AuthScreen() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
               placeholder="you@example.com"
             />
           </div>
@@ -132,7 +132,7 @@ export default function AuthScreen() {
                 required
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
                 placeholder={mode === "sign-up" ? "At least 12 characters" : "••••••••••••"}
               />
               {mode === "sign-up" && (
@@ -152,7 +152,7 @@ export default function AuthScreen() {
                 required
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
                 placeholder="Repeat your password"
               />
               {confirmPassword && confirmPassword !== password && (
@@ -194,7 +194,7 @@ export default function AuthScreen() {
             <>
               <button
                 type="button"
-                className="text-primary font-medium hover:underline"
+                className="text-[hsl(var(--accent))] font-medium hover:underline"
                 onClick={() => setMode("reset")}
               >
                 Forgot password?
@@ -203,7 +203,7 @@ export default function AuthScreen() {
                 Need an account?{" "}
                 <button
                   type="button"
-                  className="text-primary font-medium hover:underline"
+                  className="text-[hsl(var(--accent))] font-medium hover:underline"
                   onClick={() => setMode("sign-up")}
                 >
                   Create one
@@ -216,7 +216,7 @@ export default function AuthScreen() {
               Already have an account?{" "}
               <button
                 type="button"
-                className="text-primary font-medium hover:underline"
+                className="text-[hsl(var(--accent))] font-medium hover:underline"
                 onClick={() => setMode("sign-in")}
               >
                 Sign in
@@ -228,7 +228,7 @@ export default function AuthScreen() {
               Remembered your password?{" "}
               <button
                 type="button"
-                className="text-primary font-medium hover:underline"
+                className="text-[hsl(var(--accent))] font-medium hover:underline"
                 onClick={() => setMode("sign-in")}
               >
                 Return to sign in

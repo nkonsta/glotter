@@ -115,7 +115,7 @@ export default function ChangePasswordDialog({ open, onOpenChange, currentDispla
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="e.g. Alex Smith"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
             />
             {displayName.trim() !== (currentDisplayName ?? '') && (
               <button
@@ -148,7 +148,7 @@ export default function ChangePasswordDialog({ open, onOpenChange, currentDispla
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
                 placeholder="Min. 6 characters"
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
               />
               <button
                 type="button"
@@ -173,7 +173,7 @@ export default function ChangePasswordDialog({ open, onOpenChange, currentDispla
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 placeholder="Repeat new password"
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
               />
               <button
                 type="button"
