@@ -212,7 +212,7 @@ export default function UserManagementDialog({
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="user@example.com"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
             />
           </div>
 
@@ -226,7 +226,7 @@ export default function UserManagementDialog({
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="e.g. Alex Smith"
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
             />
           </div>
 
@@ -242,7 +242,7 @@ export default function UserManagementDialog({
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="Min. 6 characters"
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
               />
               <button
                 type="button"
@@ -305,16 +305,16 @@ export default function UserManagementDialog({
                       )}
                       <div className="flex items-center gap-2 text-xs text-muted">
                         {user.emailConfirmedAt ? (
-                          <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                          <span className="inline-flex items-center rounded-full bg-[hsl(var(--success)/0.14)] px-2 py-0.5 text-xs font-medium text-success">
                             Confirmed
                           </span>
                         ) : (
-                          <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600">
+                          <span className="inline-flex items-center rounded-full bg-[hsl(var(--warning)/0.16)] px-2 py-0.5 text-xs font-medium text-warning">
                             Unconfirmed
                           </span>
                         )}
                         {isSelf && (
-                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
+                          <span className="inline-flex items-center rounded-full bg-[hsl(var(--accent)/0.14)] px-2 py-0.5 text-xs font-medium text-accent">
                             You
                           </span>
                         )}
@@ -360,7 +360,7 @@ export default function UserManagementDialog({
                             </>
                           ) : (
                             <Button
-                              variant="destructive"
+                              variant="destructiveGhost"
                               size="sm"
                               onClick={() => setConfirmDeleteUserId(user.id)}
                               disabled={isDeleting}

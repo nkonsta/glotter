@@ -261,7 +261,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
           id: lang.code,
           header: () => (
             <div className="text-center">
-              <div className="font-medium text-muted-foreground text-xs uppercase tracking-wide">{lang.code}</div>
+              <div className="label-mono font-medium text-muted-foreground text-xs">{lang.code}</div>
               {lang.name && <div className="text-xs font-normal text-muted mt-0.5">{lang.name}</div>}
             </div>
           ),
@@ -281,11 +281,11 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
                   <div
                     title={readOnlyByPermission ? 'Not in your assigned languages' : undefined}
                     className={`relative p-2 text-sm rounded-md min-h-[44px] ${
-                      isMissing ? 'bg-[hsl(var(--warning)/0.12)] text-warning' : ''
+                      isMissing ? 'bg-[hsl(var(--accent)/0.05)]' : ''
                     }`}
                   >
                     {isMissing ? (
-                      <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
+                      <span className="inline-flex items-center rounded-full bg-[hsl(var(--accent)/0.1)] px-2 py-0.5 label-mono text-[0.625rem] text-[hsl(var(--accent))]">
                         Missing
                       </span>
                     ) : (
@@ -319,12 +319,12 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
                     }}
                     className={`relative p-2 text-sm cursor-pointer rounded-md transition-all duration-150 ease-out min-h-[44px] ${
                       !value
-                        ? 'hover:bg-[hsl(var(--warning)/0.14)]'
+                        ? 'hover:bg-[hsl(var(--accent)/0.06)]'
                         : 'hover:bg-surface-hover'
                     }`}
                   >
                     {!value ? (
-                      <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-[hsl(var(--warning)/0.16)] text-warning">
+                      <span className="inline-flex items-center rounded-full bg-[hsl(var(--accent)/0.1)] px-2 py-0.5 label-mono text-[0.625rem] text-[hsl(var(--accent))]">
                         Missing
                       </span>
                     ) : (
@@ -376,7 +376,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
         onChange={e => setLocalValue(e.target.value)}
         onBlur={() => onCommit(localValue)}
         onKeyDown={e => onKeyDown(e, localValue)}
-        className="w-full p-2 text-sm border-2 border-primary rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary resize-none"
+        className="w-full p-2 text-sm bg-surface text-foreground border-2 border-[hsl(var(--accent))] rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[hsl(var(--accent))] resize-none"
         rows={3}
       />
     );
@@ -442,7 +442,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
     <div className="space-y-4">
       {/* Bulk Actions Toolbar */}
       {allowRowSelection && selectedRows.size > 0 && (
-        <div className="bg-primary-soft border border-primary/40 rounded-lg px-4 sm:px-6 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="bg-primary-soft border border-[hsl(var(--accent)/0.4)] rounded-lg px-4 sm:px-6 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <span className="text-sm font-medium text-foreground">
               {selectedRows.size} row{selectedRows.size > 1 ? 's' : ''} selected
@@ -491,7 +491,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
                   return (
                     <th
                       key={header.id}
-                      className={`py-3 text-left text-xs font-medium uppercase text-muted tracking-wide whitespace-normal ${
+                      className={`py-3 text-left text-xs font-medium text-muted label-mono whitespace-normal ${
                         isCheckbox
                           ? 'bg-surface-elevated md:sticky md:left-0 md:z-10 md:bg-surface-elevated px-3 sm:px-4 w-16'
                           : isKeyColumn
@@ -516,7 +516,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
                   key={row.id}
                   data-selected={isSelected}
                   className={`group transition-all duration-150 ease-out h-14 hover:bg-surface-hover/70 hover:shadow-sm ${
-                    isSelected ? 'bg-primary-soft border-l-4 border-l-primary' : ''
+                    isSelected ? 'bg-primary-soft border-l-4 border-l-[hsl(var(--accent))]' : ''
                   }`}
                 >
                   {row.getVisibleCells().map((cell) => {
@@ -538,14 +538,14 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
                       >
                         {isKeyColumn ? (
                           <div className="group/ky flex items-center justify-between gap-2 min-w-[140px] sm:min-w-[180px] max-w-[220px] sm:max-w-[240px]">
-                            <div className="font-medium text-foreground tracking-tight text-sm break-words">
+                            <div className="font-[family-name:var(--font-mono)] text-foreground text-sm break-words">
                               {row.getValue('key') as string}
                             </div>
                             {(canUseAiRow || onOpenAllLanguages) && (
                               <div className="opacity-100 sm:opacity-0 sm:group-hover/ky:opacity-100 transition-opacity flex items-center gap-2">
                                 {canUseAiRow && (
                                   <button
-                                    className="text-muted hover:text-foreground transition-colors"
+                                    className="text-muted hover:text-[hsl(var(--accent))] transition-colors"
                                     onClick={() => {
                                       const langs = languages;
                                       const defaultSrc = langs.find(l => l.code.toLowerCase() === 'en')?.code || (langs[0]?.code || 'en');
@@ -599,7 +599,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
       </div>
       {tableData.length === 0 && (
         <div className="text-center py-16 text-muted">
-          <div className="text-lg font-medium mb-2">No translation keys found</div>
+          <div className="font-display text-xl mb-2">No translation keys found</div>
           <div className="text-sm">Add your first key to get started.</div>
         </div>
       )}
@@ -619,7 +619,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
               <div className="relative w-full sm:w-auto">
                 <button
                   onClick={() => setShowPageSizeMenu(!showPageSizeMenu)}
-                  className="flex w-full items-center justify-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-sm bg-surface hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-foreground font-medium min-w-[70px]"
+                  className="flex w-full items-center justify-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-sm bg-surface hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.4)] transition-all text-foreground font-medium min-w-[70px]"
                 >
                   <span>{pageSize}</span>
                   <svg className="h-3 w-3 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
