@@ -192,11 +192,21 @@ permissive and must be included in the audit.
 
 ## Deployed migration history
 
-The Supabase migration registry currently contains:
+At baseline capture, the Supabase migration registry contained:
 
 1. `20260602172506_harden_security_definer_search_path`
 2. `20260813113031_atomic_final_admin_guard`
 3. `20260813115050_global_access_directory_admin_operation`
+
+The completed Slice 4 registry additionally contains:
+
+4. `20260813122003_restrict_authenticated_data_access`
+5. `20260813122742_disable_unused_graphql`
+6. `20260813123826_harden_authorization_helper_execution`
+7. `20260813125954_harden_translation_scope_integrity`
+8. `20260813130000_secure_translation_history_trigger`
+9. `20260813130006_enforce_least_privilege_data_api`
+10. `20260813130706_allow_owner_membership_visibility`
 
 ## Checked-in reconciliation
 
@@ -346,3 +356,85 @@ warnings for these intentionally authenticated RLS helpers, plus the separate
 leaked-password-protection setting. The five anonymous helper warnings are
 resolved. The signed-in warnings are accepted for the current design because
 revoking that access would break the dashboard call and RLS evaluation.
+
+## Final Slice 4 corrections
+
+Four additional evidence-backed migrations were applied on 2026-08-13:
+
+1. `20260813125954_harden_translation_scope_integrity`
+   - A rollback-safe probe demonstrated that a user with memberships in two
+     projects could pair a key from one project with a same-code language row
+     from the other.
+   - The translation read, insert, and update policies now require
+     `project_languages.project_id = translation_keys.project_id`.
+   - The update policy has an explicit matching `WITH CHECK` expression.
+   - The deployed database contained zero pre-existing mismatched rows.
+2. `20260813130000_secure_translation_history_trigger`
+   - A direct, RLS-authorized member update previously failed because the audit
+     trigger could not insert into `translation_history`.
+   - The trigger function now runs as a pinned-path `SECURITY DEFINER`, and
+     direct execution is revoked from `PUBLIC`, `anon`, and `authenticated`.
+     Clients still cannot forge history rows.
+3. `20260813130006_enforce_least_privilege_data_api`
+   - Broad table grants were replaced with the exact CRUD operations in
+     `access_matrix.md`.
+   - `TRUNCATE`, `REFERENCES`, `TRIGGER`, and `MAINTAIN` are no longer granted
+     to application roles.
+   - All 22 application policies now target `authenticated` explicitly.
+   - New objects created by `postgres` in `public` no longer receive automatic
+     table, sequence, or function access. Supabase-managed `supabase_admin`
+     defaults cannot be changed by the project's `postgres` role and remain a
+     platform-managed setting.
+4. `20260813130706_allow_owner_membership_visibility`
+   - A rollback-safe probe confirmed that an owner could not read another
+     member's row, making the existing owner update policy ineffective because
+     PostgreSQL requires a matching SELECT policy for UPDATE.
+   - Owners can now read membership rows in owned projects; ordinary members
+     still see only their own row, and platform admins retain global access.
+
+The final rollback-safe matrix exercised anonymous, authenticated non-member,
+member, owner, platform-admin, and service-role behavior. It confirmed:
+
+- anonymous callers have no application-table privileges;
+- non-members see no projects and cannot create one;
+- members can update an assigned edit language and receive an audit-history
+  row, but cannot update view-only languages or project metadata;
+- cross-project key/language combinations are rejected;
+- owners can update and add keys only within an owned project and can read and
+  update the memberships they are authorized to manage;
+- platform admins can update arbitrary projects and create projects;
+- the service role retains CRUD access and RLS bypass without `TRUNCATE`; and
+- the transaction left no test rows or content changes.
+
+A disposable authenticated non-admin account was also exercised against every
+method exposed by `/api/admin/users` and `/api/admin/project-members`. All seven
+GET/POST/PATCH/DELETE checks returned `403`, and the disposable account was
+deleted immediately afterward.
+
+## Final advisor classification
+
+The final Security Advisor run reports six warnings:
+
+- Five authenticated `SECURITY DEFINER` helper warnings are accepted for the
+  current design. The helpers are read-only, caller-bound Boolean checks needed
+  by RLS, have pinned search paths, expose no account/project data, and passed
+  direct-call authorization tests.
+- Leaked-password protection remains disabled because the connected Supabase
+  organization is on the Free plan; Supabase documents the feature as Pro-only.
+  Glotter continues to enforce a 12-character minimum in its managed account
+  flows.
+
+The expected contract is checked in as `db_setup/access_matrix.md`. Performance
+Advisor notices were reviewed separately and were not treated as security
+corrections in this slice.
+
+No application views or materialized views exist in `public`, so there is no
+view-security mode to correct. Supabase Storage contains no buckets or objects,
+including no user-owned objects that could block account deletion.
+
+Deleting an Auth user does not immediately expire an already-issued JWT. In
+Glotter, project memberships and platform-admin rows reference `auth.users` and
+are removed with the account, so a stale JWT no longer satisfies the RLS helper
+checks. Sensitive admin API routes also validate the token with
+`auth.getUser()` before checking the current `platform_admins` table. No JWT
+claims or user-editable metadata are used as an authorization source.

@@ -88,23 +88,59 @@ and verified before the next one begins.
 The final-admin safeguard is a focused database and RLS change. No unrelated
 schema or policy changes were made in these slices.
 
-## Planned
-
 ### Slice 4: RLS and database exposure audit
 
-Treat database security as a separate review with its own validation:
+- The expected object/operation matrix is checked in at
+  `db_setup/access_matrix.md`.
+- Deployed RLS policies, grants, helper functions, extensions, migration
+  history, and advisor findings were reconciled with the checked-in schema.
+- Anonymous table access and unused GraphQL exposure were removed.
+- All application policies now target authenticated users explicitly, and
+  broad Data API grants were replaced with the exact required operations.
+- A proven cross-project translation key/language policy gap was corrected.
+- Project owners can now read the membership rows covered by their existing
+  management policies, making direct RLS-protected updates effective.
+- Direct authorized translation updates now write protected audit history
+  without allowing clients to forge history rows.
+- Read/write cases passed for anonymous, non-member, member, owner,
+  platform-admin, and service-role callers in rollback-safe database tests.
+- The remaining five executable-helper advisor warnings are accepted: the
+  functions are pinned-path, read-only, caller-bound Boolean checks required by
+  RLS and verified against every role.
+- Leaked-password protection was reviewed but cannot be enabled on the
+  connected Supabase Free plan; the managed account flows retain their
+  12-character minimum.
 
-- Document the expected access matrix for anonymous users, authenticated users,
-  project members, project owners, platform admins, and the server service role.
-- Compare deployed policies and helper functions with the checked-in schema.
-- Exercise representative read/write cases for each role before proposing a
-  policy change.
-- Review Supabase advisor findings around GraphQL table exposure and executable
-  `SECURITY DEFINER` helper functions.
-- Review leaked-password protection as a separate Supabase Auth configuration
-  decision.
-- Make each proven correction as a focused migration with rollback notes and
-  post-change verification.
+### Slice 4 validation completed
+
+- Verified zero existing cross-project translation rows before applying the
+  scope correction.
+- Verified the former cross-project write path before the correction and its
+  rejection afterward, with all probe rows rolled back.
+- Verified editable-language updates succeed, view-only updates fail, and the
+  audit trigger records the allowed update.
+- Verified anonymous and non-member denial, owner project isolation,
+  owner membership management, platform-admin global access/project creation,
+  and service-role CRUD access.
+- Verified application roles no longer have `TRUNCATE` or other non-Data-API
+  table privileges.
+- Verified all nine application tables retain RLS and all 22 policies target
+  `authenticated`.
+- Verified `public` contains no views or materialized views and Supabase Storage
+  contains no user-owned objects that could block account deletion.
+- Verified authorization uses current database rows rather than JWT metadata;
+  stale post-deletion JWTs no longer satisfy project or platform-admin checks.
+- Verified every GET/POST/PATCH/DELETE method on the two admin API surfaces
+  returns `403` for an authenticated non-admin; the disposable account was
+  removed afterward.
+- Verified the post-change Security Advisor has no GraphQL or anonymous-helper
+  warnings.
+- Verified every validation transaction left production data unchanged.
+
+## Current status
+
+All four planned slices are complete. Remaining items are deliberately deferred
+below rather than unfinished work in the current access-management scope.
 
 ## Deliberately deferred
 

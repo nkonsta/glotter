@@ -57,3 +57,28 @@ Run
 once to remove anonymous execution of the five RLS authorization helpers while
 retaining the authenticated and service-role execution required by the app and
 its policies.
+
+## Existing v12 install — translation scope integrity
+
+Run **[`tms_translation_scope_integrity.sql`](./tms_translation_scope_integrity.sql)**
+once to require a translation key and its language row to belong to the same
+project in all translation read/write policies.
+
+## Existing v12 install — translation-history trigger
+
+Run **[`tms_translation_history_trigger.sql`](./tms_translation_history_trigger.sql)**
+once so an authorized direct translation update can record its audit row without
+granting clients permission to insert forged history.
+
+## Existing v12 install — least-privilege Data API
+
+Run **[`tms_least_privilege_data_api.sql`](./tms_least_privilege_data_api.sql)**
+once to replace broad table privileges with the exact Data API operations used
+by Glotter, target application policies to signed-in users, and make future
+public-schema exposure opt-in.
+
+## Existing v12 install — owner membership visibility
+
+Run **[`tms_owner_membership_visibility.sql`](./tms_owner_membership_visibility.sql)**
+once so project owners can read the membership rows that their existing update
+and delete policies authorize them to manage.
