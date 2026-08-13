@@ -188,7 +188,7 @@ export default function UserManagementDialog({
     [accessToken, toast]
   );
 
-  const canSubmit = Boolean(email.trim() && password && !submitting);
+  const canSubmit = Boolean(email.trim() && password.length >= 12 && !submitting);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -241,7 +241,7 @@ export default function UserManagementDialog({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                placeholder="Min. 6 characters"
+                placeholder="Min. 12 characters"
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
               />
               <button
@@ -319,6 +319,11 @@ export default function UserManagementDialog({
                           </span>
                         )}
                       </div>
+                      {isConfirming && (
+                        <p className="text-xs text-warning">
+                          This permanently removes all project access. Projects where this is the only owner will become ownerless but remain manageable by platform admins.
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">

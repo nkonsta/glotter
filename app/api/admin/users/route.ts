@@ -111,8 +111,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'email and password must be non-empty.' }, { status: 400 });
   }
 
-  if (password.length < 6) {
-    return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
+  if (password.length < 12) {
+    return NextResponse.json({ error: 'Password must be at least 12 characters.' }, { status: 400 });
   }
 
   const { data: created, error: createError } = await supabase.auth.admin.createUser({
@@ -162,6 +162,33 @@ export async function DELETE(req: Request) {
 
   if (!userId) {
     return NextResponse.json({ error: 'userId must be non-empty.' }, { status: 400 });
+  }
+
+  const { data: targetAdmin, error: targetAdminError } = await supabase
+    .from('platform_admins')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (targetAdminError) {
+    return NextResponse.json({ error: 'Failed to verify platform admin status.' }, { status: 500 });
+  }
+
+  if (targetAdmin) {
+    const { count: adminCount, error: adminCountError } = await supabase
+      .from('platform_admins')
+      .select('user_id', { count: 'exact', head: true });
+
+    if (adminCountError || adminCount === null) {
+      return NextResponse.json({ error: 'Failed to count platform admins.' }, { status: 500 });
+    }
+
+    if (adminCount <= 1) {
+      return NextResponse.json(
+        { error: 'Cannot delete the final platform admin. Grant admin access to another user first.' },
+        { status: 409 }
+      );
+    }
   }
 
   if (userId === requester.id) {
