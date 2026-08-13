@@ -46,6 +46,23 @@ and verified before the next one begins.
   per-language view/edit permissions.
 - Invitation wording was removed from this flow.
 
+### Slice 3: global access directory and ownerless recovery
+
+- The platform-admin access directory shows every account's admin status and
+  project assignments, plus each project's owners and members.
+- Ownerless projects are clearly identified and include a direct recovery path
+  for assigning an existing non-admin account as owner.
+- Existing non-admin accounts can be assigned as project owners or members with
+  the same role and language-permission rules as project member management.
+- Granting platform-admin access never creates project memberships. Existing
+  memberships are preserved and shown as dormant while global access is active.
+- Revoking platform-admin access explicitly restores dormant memberships by
+  default or removes all project memberships. Demotion and optional cleanup are
+  atomic.
+- An admin cannot demote their own account. Another admin must perform the
+  operation, and the database safeguard still prevents removing the final
+  platform admin.
+
 ### Validation completed
 
 - Verified an existing-account match against the connected Supabase project.
@@ -56,38 +73,22 @@ and verified before the next one begins.
 - Verified password-length enforcement in the live UI.
 - Verified the database rejects final-admin deletion and truncation, and direct
   client mutations of `platform_admins` are not permitted.
+- Verified the full access-directory workflow in the live UI with a disposable
+  account: owner assignment, dormant membership on admin grant, restoration on
+  revoke, atomic remove-all on revoke, member language permissions, ownerless
+  recovery, and account deletion.
+- Verified the admin-operation migration in the connected Supabase project with
+  rollback-safe database tests. Membership preservation, cleanup, final-admin
+  rejection, and rollback all passed without leaving test data.
+- Verified unauthenticated access-directory GET and PATCH requests return 401.
+- Verified the new admin operation is callable only by the service role and is
+  not exposed to anonymous or authenticated database roles.
 - `npm run lint`, `npm run build`, and `git diff --check` pass.
 
 The final-admin safeguard is a focused database and RLS change. No unrelated
 schema or policy changes were made in these slices.
 
 ## Planned
-
-### Slice 3: global access directory and ownerless recovery
-
-Build a platform-admin view that makes the current access model visible and
-manageable across the whole instance:
-
-- Show every account's platform-admin status and project assignments.
-- Show each project's owners and members, with ownerless projects clearly
-  identified.
-- Allow a platform admin to assign an existing non-admin account as owner or
-  member using the same membership rules as the project dialog.
-- Allow platform-admin access to be granted or revoked without ever reducing
-  the system to zero admins.
-- Provide a direct recovery path for an ownerless project by assigning an
-  existing account as its owner.
-- Never create project memberships automatically when granting platform-admin
-  access.
-- Preserve any existing project memberships when granting platform-admin
-  access and show them as dormant while global access is active.
-- When revoking platform-admin access, show the dormant assignments and require
-  an explicit choice between restoring them (the default) or removing all
-  project memberships. Apply the demotion and any cleanup atomically.
-
-This slice should reuse the existing server authorization checks and membership
-operations where practical. It should not require an RLS change merely to build
-the administrative view.
 
 ### Slice 4: RLS and database exposure audit
 

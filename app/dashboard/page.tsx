@@ -726,7 +726,7 @@ export default function Home() {
             <ThemeToggle />
             {isPlatformAdmin && (
               <Button variant="outline" size="sm" onClick={() => setIsUserManagementOpen(true)}>
-                Manage users
+                Access directory
               </Button>
             )}
             <button

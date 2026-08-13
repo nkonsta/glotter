@@ -29,3 +29,10 @@ Run **[`tms_final_admin_guard.sql`](./tms_final_admin_guard.sql)** once to make
 the final-platform-admin guarantee atomic and database-enforced. The patch also
 removes direct client mutations of `platform_admins`; administrative server code
 using the service role remains able to grant and revoke access.
+
+## Existing v12 install — global access directory
+
+Run **[`tms_global_access_directory.sql`](./tms_global_access_directory.sql)**
+once before deploying the global access directory. It adds the service-role-only
+operation used to grant or revoke platform-admin access and to atomically remove
+project memberships when that is explicitly selected during demotion.
