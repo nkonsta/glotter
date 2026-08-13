@@ -284,6 +284,16 @@ REVOKE EXECUTE ON FUNCTION public.ensure_platform_admin_remains() FROM PUBLIC, a
 REVOKE EXECUTE ON FUNCTION public.prevent_platform_admin_truncate() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.set_platform_admin_access(UUID, BOOLEAN, BOOLEAN) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.set_platform_admin_access(UUID, BOOLEAN, BOOLEAN) TO service_role;
+REVOKE EXECUTE ON FUNCTION public.is_platform_admin() FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.is_project_member(UUID) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.is_project_owner(UUID) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.can_view_language(UUID, TEXT) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.can_edit_language(UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_platform_admin() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_project_member(UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_project_owner(UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.can_view_language(UUID, TEXT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.can_edit_language(UUID, TEXT) TO authenticated, service_role;
 
 CREATE OR REPLACE FUNCTION log_translation_change()
 RETURNS TRIGGER LANGUAGE plpgsql

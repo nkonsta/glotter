@@ -291,3 +291,58 @@ longer exist, all nine public tables and all 22 RLS policies remain in place,
 and the retained Supabase endpoint wrapper responds that the extension is not
 enabled. The Security Advisor now reports no anonymous or authenticated
 GraphQL table-exposure warnings.
+
+## Authorization-helper audit
+
+The five `SECURITY DEFINER` authorization helpers were reviewed separately.
+Each helper:
+
+- is a stable, read-only Boolean function;
+- derives the caller only from `auth.uid()` and does not accept a user ID;
+- uses fully qualified table/function names and an empty pinned `search_path`;
+- contains no dynamic SQL and performs no mutation; and
+- returns only the caller's effective admin, membership, ownership, or language
+  permission for a supplied project/language—not project or account data.
+
+Direct-call tests produced the expected results:
+
+| Caller | Result |
+| --- | --- |
+| Anonymous | All five checks returned `false` |
+| Authenticated non-member | All five checks returned `false` |
+| Existing member | Member/view/edit matched only the assigned project and permissions; owner/admin were `false` |
+| Existing owner | Member/owner/view/edit were `true` for an owned project and `false` for another project |
+| Platform admin | All five checks returned `true` for a sampled project |
+
+`SECURITY DEFINER` is necessary for these helpers to read the protected
+`platform_admins` and `project_members` tables without recursive RLS evaluation.
+Changing them to `SECURITY INVOKER` is not a safe advisor-only correction.
+
+The remaining concern is API exposure. `is_platform_admin()` is intentionally
+called by the dashboard. The other four helpers are called only by RLS policies,
+but the `authenticated` role needs `EXECUTE` for those policies to work. Moving
+them into a non-exposed schema could hide their RPC endpoints, but would require
+a broad rewrite of policy/function references. No authorization bypass was
+found that justifies that higher-risk rewrite.
+
+Migration `20260813123826_harden_authorization_helper_execution` was applied on
+2026-08-13. It revoked direct execution of the five helpers from `PUBLIC` and
+`anon`, while explicitly retaining `EXECUTE` for `authenticated` and
+`service_role`. It did not change any function body or RLS policy.
+
+Post-change rollback-safe checks confirmed that:
+
+- `anon` cannot execute any of the five helpers;
+- `authenticated` and `service_role` can execute all five helpers;
+- an existing member can still read their project and update a translation in
+  an assigned edit language;
+- an existing owner can still update their project;
+- an existing platform admin can still call `is_platform_admin()` and create a
+  project; and
+- the validation transaction left zero test projects.
+
+The Security Advisor now reports six warnings: five signed-in execution
+warnings for these intentionally authenticated RLS helpers, plus the separate
+leaked-password-protection setting. The five anonymous helper warnings are
+resolved. The signed-in warnings are accepted for the current design because
+revoking that access would break the dashboard call and RLS evaluation.

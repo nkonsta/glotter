@@ -49,3 +49,11 @@ authenticated access remains governed by the established RLS policies.
 Run **[`tms_disable_graphql.sql`](./tms_disable_graphql.sql)** once when Glotter
 does not use Supabase's GraphQL endpoint. It removes only the `pg_graphql`
 extension; the REST Data API, Auth, and RLS policies are unaffected.
+
+## Existing v12 install — authorization-helper execution
+
+Run
+**[`tms_harden_authorization_helper_execution.sql`](./tms_harden_authorization_helper_execution.sql)**
+once to remove anonymous execution of the five RLS authorization helpers while
+retaining the authenticated and service-role execution required by the app and
+its policies.
