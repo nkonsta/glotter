@@ -193,12 +193,110 @@ SET search_path = '' AS $$
     );
 $$;
 
+-- Serialize platform-admin deletions so concurrent requests cannot both remove
+-- what each observed as one of multiple remaining admins.
+CREATE OR REPLACE FUNCTION serialize_platform_admin_deletes()
+RETURNS TRIGGER LANGUAGE plpgsql
+SET search_path = '' AS $$
+BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock(194637201, 731945113);
+  RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION ensure_platform_admin_remains()
+RETURNS TRIGGER LANGUAGE plpgsql
+SET search_path = '' AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.platform_admins) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'At least one platform admin is required.',
+      CONSTRAINT = 'platform_admins_must_not_be_empty';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION prevent_platform_admin_truncate()
+RETURNS TRIGGER LANGUAGE plpgsql
+SET search_path = '' AS $$
+BEGIN
+  RAISE EXCEPTION USING
+    ERRCODE = '23514',
+    MESSAGE = 'The platform admin table cannot be truncated.',
+    CONSTRAINT = 'platform_admins_must_not_be_empty';
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION set_platform_admin_access(
+  p_user_id UUID,
+  p_enabled BOOLEAN,
+  p_remove_memberships BOOLEAN DEFAULT false
+)
+RETURNS BOOLEAN LANGUAGE plpgsql
+SET search_path = '' AS $$
+DECLARE
+  affected_rows INTEGER;
+BEGIN
+  IF p_enabled THEN
+    INSERT INTO public.platform_admins (user_id)
+    VALUES (p_user_id)
+    ON CONFLICT (user_id) DO NOTHING;
+
+    GET DIAGNOSTICS affected_rows = ROW_COUNT;
+    RETURN affected_rows > 0;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.platform_admins WHERE user_id = p_user_id
+  ) THEN
+    RETURN false;
+  END IF;
+
+  IF p_remove_memberships THEN
+    DELETE FROM public.project_members WHERE user_id = p_user_id;
+  END IF;
+
+  DELETE FROM public.platform_admins WHERE user_id = p_user_id;
+  RETURN true;
+END;
+$$;
+
 --------------------------------------------------------------------------------
--- 5) Audit Trigger
+-- 5) Triggers
 --------------------------------------------------------------------------------
 
+CREATE TRIGGER serialize_platform_admin_deletes
+  BEFORE DELETE ON public.platform_admins
+  FOR EACH STATEMENT EXECUTE FUNCTION public.serialize_platform_admin_deletes();
+
+CREATE TRIGGER ensure_platform_admin_remains
+  AFTER DELETE ON public.platform_admins
+  FOR EACH ROW EXECUTE FUNCTION public.ensure_platform_admin_remains();
+
+CREATE TRIGGER prevent_platform_admin_truncate
+  BEFORE TRUNCATE ON public.platform_admins
+  FOR EACH STATEMENT EXECUTE FUNCTION public.prevent_platform_admin_truncate();
+
+REVOKE EXECUTE ON FUNCTION public.serialize_platform_admin_deletes() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.ensure_platform_admin_remains() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.prevent_platform_admin_truncate() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.set_platform_admin_access(UUID, BOOLEAN, BOOLEAN) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.set_platform_admin_access(UUID, BOOLEAN, BOOLEAN) TO service_role;
+REVOKE EXECUTE ON FUNCTION public.is_platform_admin() FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.is_project_member(UUID) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.is_project_owner(UUID) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.can_view_language(UUID, TEXT) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.can_edit_language(UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_platform_admin() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_project_member(UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_project_owner(UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.can_view_language(UUID, TEXT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.can_edit_language(UUID, TEXT) TO authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION log_translation_change()
-RETURNS TRIGGER LANGUAGE plpgsql
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = '' AS $$
 BEGIN
   IF (TG_OP = 'UPDATE' AND OLD.value IS DISTINCT FROM NEW.value) THEN
@@ -208,6 +306,9 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.log_translation_change() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.log_translation_change() TO service_role;
 
 CREATE TRIGGER translation_audit_trigger
   AFTER UPDATE ON translations
@@ -230,59 +331,74 @@ ALTER TABLE project_activity_log ENABLE ROW LEVEL SECURITY;
 
 -- Projects
 CREATE POLICY view_own_projects ON projects
-  FOR SELECT USING (is_project_member(id));
+  FOR SELECT TO authenticated USING (is_project_member(id));
 CREATE POLICY owners_update_projects ON projects
-  FOR UPDATE USING (is_project_owner(id));
+  FOR UPDATE TO authenticated USING (is_project_owner(id));
 CREATE POLICY owners_delete_projects ON projects
-  FOR DELETE USING (is_project_owner(id));
+  FOR DELETE TO authenticated USING (is_project_owner(id));
 CREATE POLICY owners_insert_projects ON projects
-  FOR INSERT WITH CHECK (true);
+  FOR INSERT TO authenticated WITH CHECK (is_platform_admin());
 
 -- Project Languages
 CREATE POLICY view_project_languages ON project_languages
-  FOR SELECT USING (is_project_member(project_id));
+  FOR SELECT TO authenticated USING (is_project_member(project_id));
 CREATE POLICY owners_manage_languages ON project_languages
-  FOR ALL USING (is_project_owner(project_id));
+  FOR ALL TO authenticated USING (is_project_owner(project_id));
 
 -- Translation Keys
 CREATE POLICY view_translation_keys ON translation_keys
-  FOR SELECT USING (is_project_member(project_id));
+  FOR SELECT TO authenticated USING (is_project_member(project_id));
 CREATE POLICY owners_manage_keys ON translation_keys
-  FOR ALL USING (is_project_owner(project_id));
+  FOR ALL TO authenticated USING (is_project_owner(project_id));
 
 -- Translations (language-aware)
 CREATE POLICY view_translations ON translations
-  FOR SELECT USING (
+  FOR SELECT TO authenticated USING (
     EXISTS (
       SELECT 1 FROM translation_keys tk
-      JOIN project_languages pl ON pl.id = translations.project_language_id
+      JOIN project_languages pl
+        ON pl.id = translations.project_language_id
+       AND pl.project_id = tk.project_id
       WHERE tk.id = translations.key_id
         AND can_view_language(tk.project_id, pl.language_code)
     )
   );
 
 CREATE POLICY edit_translations ON translations
-  FOR UPDATE USING (
+  FOR UPDATE TO authenticated USING (
     EXISTS (
       SELECT 1 FROM translation_keys tk
-      JOIN project_languages pl ON pl.id = translations.project_language_id
+      JOIN project_languages pl
+        ON pl.id = translations.project_language_id
+       AND pl.project_id = tk.project_id
+      WHERE tk.id = translations.key_id
+        AND can_edit_language(tk.project_id, pl.language_code)
+    )
+  ) WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM translation_keys tk
+      JOIN project_languages pl
+        ON pl.id = translations.project_language_id
+       AND pl.project_id = tk.project_id
       WHERE tk.id = translations.key_id
         AND can_edit_language(tk.project_id, pl.language_code)
     )
   );
 
 CREATE POLICY insert_translations ON translations
-  FOR INSERT WITH CHECK (
+  FOR INSERT TO authenticated WITH CHECK (
     EXISTS (
       SELECT 1 FROM translation_keys tk
-      JOIN project_languages pl ON pl.id = translations.project_language_id
+      JOIN project_languages pl
+        ON pl.id = translations.project_language_id
+       AND pl.project_id = tk.project_id
       WHERE tk.id = translations.key_id
         AND can_edit_language(tk.project_id, pl.language_code)
     )
   );
 
 CREATE POLICY delete_translations ON translations
-  FOR DELETE USING (
+  FOR DELETE TO authenticated USING (
     EXISTS (
       SELECT 1 FROM translation_keys tk
       WHERE tk.id = translations.key_id
@@ -292,23 +408,24 @@ CREATE POLICY delete_translations ON translations
 
 -- Project Members
 CREATE POLICY view_project_members ON project_members
-  FOR SELECT USING (user_id = auth.uid() OR is_platform_admin());
+  FOR SELECT TO authenticated USING (
+    user_id = (SELECT auth.uid()) OR is_project_owner(project_id)
+  );
 CREATE POLICY owners_manage_members ON project_members
-  FOR INSERT WITH CHECK (is_project_owner(project_id));
+  FOR INSERT TO authenticated WITH CHECK (is_project_owner(project_id));
 CREATE POLICY owners_update_members ON project_members
-  FOR UPDATE USING (is_project_owner(project_id));
+  FOR UPDATE TO authenticated USING (is_project_owner(project_id));
 CREATE POLICY owners_delete_members ON project_members
-  FOR DELETE USING (is_project_owner(project_id));
+  FOR DELETE TO authenticated USING (is_project_owner(project_id));
 
 -- Platform Admins
 CREATE POLICY admins_view_admins ON platform_admins
-  FOR SELECT USING (is_platform_admin());
-CREATE POLICY admins_manage_admins ON platform_admins
-  FOR ALL USING (is_platform_admin());
+  FOR SELECT TO authenticated USING (is_platform_admin());
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.platform_admins FROM anon, authenticated;
 
 -- Translation History
 CREATE POLICY view_translation_history ON translation_history
-  FOR SELECT USING (
+  FOR SELECT TO authenticated USING (
     EXISTS (
       SELECT 1 FROM translations t
       JOIN translation_keys tk ON tk.id = t.key_id
@@ -319,14 +436,56 @@ CREATE POLICY view_translation_history ON translation_history
 
 -- Project Invites
 CREATE POLICY view_project_invites ON project_invites
-  FOR SELECT USING (is_project_owner(project_id));
+  FOR SELECT TO authenticated USING (is_project_owner(project_id));
 CREATE POLICY owners_manage_invites ON project_invites
-  FOR ALL USING (is_project_owner(project_id));
+  FOR ALL TO authenticated USING (is_project_owner(project_id));
 
 -- Project Activity Log
 CREATE POLICY view_activity_log ON project_activity_log
-  FOR SELECT USING (is_project_member(project_id));
+  FOR SELECT TO authenticated USING (is_project_member(project_id));
 CREATE POLICY insert_activity_log ON project_activity_log
-  FOR INSERT WITH CHECK (is_project_member(project_id));
+  FOR INSERT TO authenticated WITH CHECK (is_project_member(project_id));
+
+REVOKE ALL PRIVILEGES ON TABLE
+  public.projects,
+  public.project_languages,
+  public.translation_keys,
+  public.translations,
+  public.project_members,
+  public.platform_admins,
+  public.translation_history,
+  public.project_invites,
+  public.project_activity_log
+FROM anon, authenticated, service_role;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+  public.projects,
+  public.project_languages,
+  public.translation_keys,
+  public.translations,
+  public.project_members,
+  public.project_invites
+TO authenticated;
+GRANT SELECT ON TABLE public.platform_admins, public.translation_history TO authenticated;
+GRANT SELECT, INSERT ON TABLE public.project_activity_log TO authenticated;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+  public.projects,
+  public.project_languages,
+  public.translation_keys,
+  public.translations,
+  public.project_members,
+  public.platform_admins,
+  public.translation_history,
+  public.project_invites,
+  public.project_activity_log
+TO service_role;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL PRIVILEGES ON TABLES FROM anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL PRIVILEGES ON SEQUENCES FROM anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated, service_role;
 
 COMMIT;

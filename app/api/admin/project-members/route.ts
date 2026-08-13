@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { User } from '@supabase/supabase-js';
+import { findAuthUserByEmail } from '@/lib/serverAuthUsers';
 import { getSupabaseAdminClient } from '@/lib/serverSupabase';
 
 type RequesterContext =
@@ -74,6 +75,7 @@ export async function GET(req: Request) {
   const { supabase, requester, isPlatformAdmin } = auth;
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get('projectId');
+  const lookupEmail = searchParams.get('email');
 
   if (!projectId) {
     return NextResponse.json({ error: 'projectId query parameter is required.' }, { status: 400 });
@@ -94,6 +96,67 @@ export async function GET(req: Request) {
     if (!membership || membership.role !== 'owner') {
       return unauthorized('Insufficient permissions.', 403);
     }
+  }
+
+  if (lookupEmail !== null) {
+    const email = lookupEmail.trim().toLowerCase();
+    if (!email) {
+      return NextResponse.json({ error: 'email query parameter must be non-empty.' }, { status: 400 });
+    }
+
+    const { user: targetUser, error: lookupError } = await findAuthUserByEmail(supabase, email);
+
+    if (lookupError) {
+      return NextResponse.json({ error: 'Failed to look up user in Supabase Auth.' }, { status: 500 });
+    }
+
+    if (!targetUser) {
+      return NextResponse.json(
+        { error: 'No account found with that email. Ask a platform admin to create it first.' },
+        { status: 404 }
+      );
+    }
+
+    const [{ data: targetAdmin, error: targetAdminError }, { data: existing, error: existingError }] =
+      await Promise.all([
+        supabase
+          .from('platform_admins')
+          .select('user_id')
+          .eq('user_id', targetUser.id)
+          .maybeSingle(),
+        supabase
+          .from('project_members')
+          .select('id')
+          .eq('project_id', projectId)
+          .eq('user_id', targetUser.id)
+          .maybeSingle(),
+      ]);
+
+    if (targetAdminError || existingError) {
+      return NextResponse.json({ error: 'Failed to verify account access.' }, { status: 500 });
+    }
+
+    if (targetAdmin) {
+      return NextResponse.json(
+        { error: 'Platform admins already have access to every project and do not need project membership.' },
+        { status: 409 }
+      );
+    }
+
+    if (existing) {
+      return NextResponse.json(
+        { error: 'This account is already a project member. Edit its access below.' },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({
+      user: {
+        id: targetUser.id,
+        email: targetUser.email ?? email,
+        displayName: (targetUser.user_metadata?.display_name as string | undefined) ?? null,
+      },
+    });
   }
 
   const { data: members, error } = await supabase
@@ -145,18 +208,18 @@ export async function POST(req: Request) {
     typeof payload !== 'object' ||
     payload === null ||
     typeof (payload as { projectId?: unknown }).projectId !== 'string' ||
-    typeof (payload as { email?: unknown }).email !== 'string' ||
+    typeof (payload as { userId?: unknown }).userId !== 'string' ||
     typeof (payload as { role?: unknown }).role !== 'string'
   ) {
-    return NextResponse.json({ error: 'projectId, email, and role are required.' }, { status: 400 });
+    return NextResponse.json({ error: 'projectId, userId, and role are required.' }, { status: 400 });
   }
 
   const projectId = (payload as { projectId: string }).projectId.trim();
-  const email = (payload as { email: string }).email.trim().toLowerCase();
+  const userId = (payload as { userId: string }).userId.trim();
   const roleValue = (payload as { role: string }).role.trim().toLowerCase();
 
-  if (!projectId || !email || !roleValue) {
-    return NextResponse.json({ error: 'projectId, email, and role must be non-empty.' }, { status: 400 });
+  if (!projectId || !userId || !roleValue) {
+    return NextResponse.json({ error: 'projectId, userId, and role must be non-empty.' }, { status: 400 });
   }
 
   if (!ALLOWED_ROLE_SET.has(roleValue as AllowedRole)) {
@@ -218,19 +281,31 @@ export async function POST(req: Request) {
     }
   }
 
-  const { data: listResult, error: lookupError } = await supabase.auth.admin.listUsers();
+  const { data: targetResponse, error: lookupError } = await supabase.auth.admin.getUserById(userId);
+  const targetUser = targetResponse?.user ?? null;
 
   if (lookupError) {
     return NextResponse.json({ error: 'Failed to look up user in Supabase Auth.' }, { status: 500 });
   }
 
-  const matchingUser = listResult?.users?.find((u) => u.email?.toLowerCase() === email) ?? null;
-  const targetUser = matchingUser;
-
   if (!targetUser) {
+    return NextResponse.json({ error: 'The selected account no longer exists.' }, { status: 404 });
+  }
+
+  const { data: targetAdmin, error: targetAdminError } = await supabase
+    .from('platform_admins')
+    .select('user_id')
+    .eq('user_id', targetUser.id)
+    .maybeSingle();
+
+  if (targetAdminError) {
+    return NextResponse.json({ error: 'Failed to verify platform admin status.' }, { status: 500 });
+  }
+
+  if (targetAdmin) {
     return NextResponse.json(
-      { error: 'No user found with that email. Create the user first via User Management.' },
-      { status: 404 }
+      { error: 'Platform admins already have access to every project and do not need project membership.' },
+      { status: 409 }
     );
   }
 

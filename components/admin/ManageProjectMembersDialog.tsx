@@ -20,6 +20,12 @@ type MemberRecord = {
   emailConfirmedAt?: string | null;
 };
 
+type ExistingAccount = {
+  id: string;
+  email: string;
+  displayName: string | null;
+};
+
 type ManageProjectMembersDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -67,7 +73,9 @@ export default function ManageProjectMembersDialog({
   const { toast } = useToast();
   const [members, setMembers] = useState<MemberRecord[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
-  const [email, setEmail] = useState('');
+  const [accountEmail, setAccountEmail] = useState('');
+  const [selectedAccount, setSelectedAccount] = useState<ExistingAccount | null>(null);
+  const [lookingUpAccount, setLookingUpAccount] = useState(false);
   const [role, setRole] = useState<ProjectRole>('member');
   const [viewSelection, setViewSelection] = useState<Set<string>>(new Set());
   const [editSelection, setEditSelection] = useState<Set<string>>(new Set());
@@ -110,8 +118,13 @@ export default function ManageProjectMembersDialog({
     });
   }, [members]);
 
+  const ownerCount = useMemo(
+    () => members.filter((member) => member.role === 'owner').length,
+    [members]
+  );
+
   const canSubmit = useMemo(() => {
-    if (!projectId || !accessToken || !email.trim()) return false;
+    if (!projectId || !accessToken || !selectedAccount) return false;
     if (role === 'owner') return true;
     if (availableLanguages.length === 0) return false;
     if (viewSelection.size === 0) return false;
@@ -119,7 +132,7 @@ export default function ManageProjectMembersDialog({
       if (!viewSelection.has(code)) return false;
     }
     return true;
-  }, [projectId, accessToken, email, role, availableLanguages.length, viewSelection, editSelection]);
+  }, [projectId, accessToken, selectedAccount, role, availableLanguages.length, viewSelection, editSelection]);
 
   const canSaveEdit = useMemo(() => {
     if (!editingMember || !projectId || !accessToken) return false;
@@ -185,15 +198,61 @@ export default function ManageProjectMembersDialog({
     }
   }, [projectId, accessToken, toast, onOpenChange]);
 
+  const findAccount = useCallback(async () => {
+    if (!projectId || !accessToken || !accountEmail.trim()) return;
+
+    setLookingUpAccount(true);
+    setSelectedAccount(null);
+    try {
+      const params = new URLSearchParams({
+        projectId,
+        email: accountEmail.trim(),
+      });
+      const response = await fetch(`/api/admin/project-members?${params.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const description = typeof payload.error === 'string' ? payload.error : 'Could not find that account.';
+        toast({ title: 'Account not available', description, variant: 'error' });
+        if (response.status === 401 || response.status === 403) {
+          onOpenChange(false);
+        }
+        return;
+      }
+
+      const user = payload.user as ExistingAccount | undefined;
+      if (!user?.id || !user.email) {
+        throw new Error('The account lookup returned an invalid response.');
+      }
+
+      setSelectedAccount(user);
+    } catch (error) {
+      console.error('Failed to find account', error);
+      toast({
+        title: 'Could not find account',
+        description: error instanceof Error ? error.message : 'Unexpected error occurred.',
+        variant: 'error',
+      });
+    } finally {
+      setLookingUpAccount(false);
+    }
+  }, [projectId, accessToken, accountEmail, toast, onOpenChange]);
+
   useEffect(() => {
     if (open) {
       void fetchMembers();
-      setEmail('');
+      setAccountEmail('');
+      setSelectedAccount(null);
       setRole('member');
       setViewSelection(defaultViewSeed());
       setEditSelection(new Set());
     } else {
-      setEmail('');
+      setAccountEmail('');
+      setSelectedAccount(null);
       setRole('member');
       setViewSelection(defaultViewSeed());
       setEditSelection(new Set());
@@ -265,7 +324,7 @@ export default function ManageProjectMembersDialog({
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!projectId || !accessToken || !email.trim()) {
+      if (!projectId || !accessToken || !selectedAccount) {
         return;
       }
 
@@ -284,7 +343,7 @@ export default function ManageProjectMembersDialog({
           },
           body: JSON.stringify({
             projectId,
-            email,
+            userId: selectedAccount.id,
             role,
             viewLanguages: role === 'member' ? Array.from(viewSelection) : null,
             editLanguages: role === 'member' ? Array.from(editSelection) : null,
@@ -306,17 +365,18 @@ export default function ManageProjectMembersDialog({
         }
 
         toast({
-          title: 'User added',
+          title: 'Member added',
           description:
             payload.status === 'updated'
               ? 'Existing member access updated.'
               : payload.status === 'unchanged'
                 ? 'User already has the same access.'
-                : 'User added successfully.',
+                : 'Account added successfully.',
           variant: 'success',
         });
 
-        setEmail('');
+        setAccountEmail('');
+        setSelectedAccount(null);
         setRole('member');
         setViewSelection(defaultViewSeed());
         setEditSelection(new Set());
@@ -332,7 +392,7 @@ export default function ManageProjectMembersDialog({
         setSubmitting(false);
       }
     },
-    [projectId, accessToken, email, role, viewSelection, editSelection, toast, onOpenChange, defaultViewSeed, fetchMembers]
+    [projectId, accessToken, selectedAccount, role, viewSelection, editSelection, toast, onOpenChange, defaultViewSeed, fetchMembers]
   );
 
   const startEditingMember = useCallback(
@@ -383,7 +443,7 @@ export default function ManageProjectMembersDialog({
         },
         body: JSON.stringify({
           projectId,
-          email: editingMember.email,
+          userId: editingMember.userId,
           role: editRole,
           viewLanguages: editRole === 'member' ? Array.from(editViewSelection) : null,
           editLanguages: editRole === 'member' ? Array.from(editEditSelection) : null,
@@ -479,25 +539,65 @@ export default function ManageProjectMembersDialog({
           <DialogHeader>
             <DialogTitle>Manage project members</DialogTitle>
             <DialogDescription>
-              Invite teammates to the {projectName ?? 'selected'} project and adjust their access levels.
+              Add existing Glotter accounts to the {projectName ?? 'selected'} project and adjust their access levels.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="space-y-2">
               <label className="block text-sm font-medium text-muted" htmlFor="member-email">
-                Email address
+                Find an existing account
               </label>
-              <input
-                id="member-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-                placeholder="translator@example.com"
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
-              />
+              <div className="flex gap-2">
+                <input
+                  id="member-email"
+                  type="email"
+                  value={accountEmail}
+                  onChange={(event) => {
+                    setAccountEmail(event.target.value);
+                    setSelectedAccount(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void findAccount();
+                    }
+                  }}
+                  required
+                  placeholder="translator@example.com"
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void findAccount()}
+                  disabled={!accountEmail.trim() || lookingUpAccount}
+                >
+                  {lookingUpAccount ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Spinner size={14} />
+                      Finding…
+                    </span>
+                  ) : (
+                    'Find'
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted">
+                New accounts must be created by a platform admin in User Management.
+              </p>
             </div>
+
+            {selectedAccount && (
+              <div className="rounded-lg border border-border bg-surface px-3 py-2">
+                <p className="text-sm font-medium text-foreground">
+                  {selectedAccount.displayName ?? selectedAccount.email}
+                </p>
+                {selectedAccount.displayName && (
+                  <p className="text-xs text-muted">{selectedAccount.email}</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <span className="block text-sm font-medium text-muted">Role</span>
@@ -537,7 +637,7 @@ export default function ManageProjectMembersDialog({
                   <span className="block text-sm font-medium text-muted">View languages</span>
                   {availableLanguages.length === 0 ? (
                     <p className="mt-1 text-xs text-warning">
-                      Add project languages before inviting members with restricted access.
+                      Add project languages before assigning restricted access.
                     </p>
                   ) : (
                     <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -596,7 +696,7 @@ export default function ManageProjectMembersDialog({
                     Adding…
                   </span>
                 ) : (
-                  'Add user'
+                  'Add member'
                 )}
               </Button>
             </div>
@@ -615,7 +715,7 @@ export default function ManageProjectMembersDialog({
 
             {!loadingMembers && sortedMembers.length === 0 && (
               <p className="text-sm text-muted border border-dashed border-border rounded-lg px-3 py-4 text-center">
-                No members found for this project yet. Invite someone above to get started.
+                No members found for this project yet. Add an existing account above to get started.
               </p>
             )}
 
@@ -636,7 +736,12 @@ export default function ManageProjectMembersDialog({
                         </div>
                       )}
                       {!member.emailConfirmedAt && (
-                        <p className="text-xs text-warning">Invitation pending — user has not confirmed their email yet.</p>
+                        <p className="text-xs text-warning">Email not confirmed.</p>
+                      )}
+                      {confirmRemoveMemberId === member.id && member.role === 'owner' && ownerCount === 1 && (
+                        <p className="text-xs text-warning">
+                          Removing this owner will leave the project ownerless. Platform admins can still manage it.
+                        </p>
                       )}
                     </div>
                     <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">
@@ -670,7 +775,7 @@ export default function ManageProjectMembersDialog({
                                   Removing…
                                 </span>
                               ) : (
-                                'Confirm remove'
+                                'Remove'
                               )}
                             </Button>
                           </>
@@ -819,6 +924,12 @@ export default function ManageProjectMembersDialog({
                     </div>
                   </div>
                 </div>
+              )}
+
+              {editingMember.role === 'owner' && editRole === 'member' && ownerCount === 1 && (
+                <p className="text-sm text-warning">
+                  This will leave the project ownerless. Platform admins can still manage it.
+                </p>
               )}
 
               <div className="flex justify-end gap-2">

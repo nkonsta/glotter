@@ -33,8 +33,28 @@ export interface AiSuggestedTranslation {
   error?: string; // optional error per item
 }
 
+export interface AiTranslationFailure {
+  targetLanguage: string;
+  keys: string[];
+  code: import('./errors').AiErrorCode;
+  message: string;
+  retryable: boolean;
+}
+
 export interface AiTranslateResponseBody {
+  requestId: string;
   translations: Record<string, AiSuggestedTranslation[]>; // by target language code
+  failures: AiTranslationFailure[];
+}
+
+export interface AiErrorResponseBody {
+  error: {
+    code: import('./errors').AiErrorCode;
+    message: string;
+    requestId: string;
+    retryable: boolean;
+    retryAfterSeconds?: number;
+  };
 }
 
 export interface AiProviderConfig {
@@ -50,7 +70,14 @@ export interface AiProvider {
     inputs: string[];
     glossary?: AiGlossaryTerm[];
     abortSignal?: AbortSignal;
-  }): Promise<{ outputs: string[] }>; // same length as inputs
+  }): Promise<{
+    outputs: string[];
+    providerRequestId?: string;
+    usage: {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+    };
+  }>; // same length as inputs
 }
-
 

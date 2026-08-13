@@ -65,8 +65,8 @@ export default function ChangePasswordDialog({ open, onOpenChange, currentDispla
     e.preventDefault();
     setValidationError('');
 
-    if (newPassword.length < 6) {
-      setValidationError('Password must be at least 6 characters.');
+    if (newPassword.length < 12) {
+      setValidationError('Password must be at least 12 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -147,7 +147,7 @@ export default function ChangePasswordDialog({ open, onOpenChange, currentDispla
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                placeholder="Min. 6 characters"
+                placeholder="Min. 12 characters"
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
               />
               <button

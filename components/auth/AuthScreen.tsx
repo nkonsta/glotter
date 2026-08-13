@@ -137,7 +137,7 @@ export default function AuthScreen() {
               />
               {mode === "sign-up" && (
                 <p className="text-xs text-muted">
-                  Use at least 12 characters, including upper & lowercase letters and a number or symbol.
+                  Use at least 12 characters.
                 </p>
               )}
             </div>

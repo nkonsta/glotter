@@ -9,13 +9,16 @@ import {
   createColumnHelper,
   ColumnDef,
 } from '@tanstack/react-table';
-import { TranslationRow } from '@/lib/supabase';
+import { supabase, type TranslationRow } from '@/lib/supabase';
 import { updateTranslation, createTranslation, deleteTranslationKeys } from '@/lib/translations';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/Tooltip';
 import { Languages, WandSparkles } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
+import { chunkAiTargetLanguages } from '@/lib/ai/limits';
+import { AiTranslateApiError, requestAiTranslations } from '@/lib/ai/client';
+import type { AiTranslateResponseBody } from '@/lib/ai/types';
 
 interface TranslationGridProps {
   data: TranslationRow[];
@@ -552,7 +555,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
                                       setAiSourceLang(defaultSrc);
                                       const targets = new Set<string>();
                                       langs.forEach(l => {
-                                        if (l.code === defaultSrc) return;
+                                        if (l.code === defaultSrc || !editableLanguages.has(l.code)) return;
                                         const hasVal = tableData[actualRowIndex]?.translations[l.code]?.value;
                                         if (!hasVal) targets.add(l.code);
                                       });
@@ -727,7 +730,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
       <DialogContent>
         <DialogHeader>
           <DialogTitle>AI translate this key</DialogTitle>
-          <DialogDescription>Generate suggestions for the selected row only.</DialogDescription>
+          <DialogDescription>Generate suggestions for the selected row only. Source text is sent to the configured AI provider.</DialogDescription>
         </DialogHeader>
         {aiDialog.rowIndex != null && (
           <div className="space-y-3">
@@ -747,7 +750,7 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Target languages</label>
                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-auto border border-border rounded-md p-2">
-                  {languages.map(l => {
+                  {languages.filter(l => editableLanguages.has(l.code)).map(l => {
                     const checked = aiTargets.has(l.code);
                     const disabled = l.code === aiSourceLang;
                     return (
@@ -790,26 +793,44 @@ export default function TranslationGrid({ data, languages, projectId, onOpenAllL
                   }
                   try {
                     setAiBusy(true);
-                    const res = await fetch('/api/ai-translate', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        projectId: 'n/a',
-                        sourceLanguage: aiSourceLang,
-                        targetLanguages: targets,
-                        entries: [{ key: row.key, text: sourceText }],
-                        options: { preservePlaceholders: true, dryRun: true },
-                      }),
-                    });
-                    if (!res.ok) throw new Error(await res.text());
-                    const json = await res.json();
-                    const perLang = json.translations as Record<string, Array<{ key: string; aiText: string; error?: string }>>;
+                    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+                    if (sessionError) throw sessionError;
+                    const accessToken = sessionData.session?.access_token;
+                    if (!accessToken) {
+                      throw new Error('Not authenticated. Please sign in again.');
+                    }
+                    const perLang: Record<string, Array<{ key: string; aiText: string; error?: string }>> = {};
+                    let failedTranslations = 0;
+                    for (const targetChunk of chunkAiTargetLanguages(targets)) {
+                      try {
+                        const response: AiTranslateResponseBody = await requestAiTranslations({
+                          projectId,
+                          sourceLanguage: aiSourceLang,
+                          targetLanguages: targetChunk,
+                          entries: [{ key: row.key, text: sourceText }],
+                          options: { preservePlaceholders: true, dryRun: true },
+                        }, accessToken);
+                        Object.assign(perLang, response.translations);
+                        failedTranslations += response.failures.length;
+                      } catch (error) {
+                        if (!(error instanceof AiTranslateApiError)) throw error;
+                        failedTranslations += targetChunk.length;
+                        break;
+                      }
+                    }
                     const out: Record<string, string> = {};
                     for (const [lang, arr] of Object.entries(perLang)) {
                       const item = arr.find(i => i.key === row.key);
                       if (item && !item.error && item.aiText) out[lang] = item.aiText;
                     }
                     setAiPreview(out);
+                    if (failedTranslations > 0) {
+                      toast({
+                        title: 'Some suggestions failed',
+                        description: 'Completed suggestions were preserved.',
+                        variant: 'error',
+                      });
+                    }
                   } catch (e) {
                     console.error(e);
                     toast({ title: 'AI preview failed', description: 'Could not generate suggestion.', variant: 'error' });
