@@ -238,6 +238,12 @@ export async function DELETE(req: Request) {
     .eq('user_id', userId);
 
   if (adminError) {
+    if (adminError.code === '23514') {
+      return NextResponse.json(
+        { error: 'Cannot delete the final platform admin. Grant admin access to another user first.' },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: 'Failed to remove platform admin record.' }, { status: 500 });
   }
 

@@ -23,8 +23,9 @@ and verified before the next one begins.
 - Supabase Auth email lookup now scans every paginated user page instead of only
   the first page.
 - Admin-created passwords and password changes require at least 12 characters.
-- The final platform admin cannot be deleted. Another admin must be granted
-  first.
+- The final platform admin cannot be deleted. This is enforced atomically in the
+  database, including concurrent and bulk deletion attempts; another admin must
+  be granted first.
 - Deleting a user is allowed even when that user is a project's only owner; the
   project becomes ownerless and remains manageable by platform admins.
 - Removing or demoting a project's only owner shows a clear ownerless-project
@@ -53,9 +54,12 @@ and verified before the next one begins.
 - Verified that an ownerless project remains accessible to a platform admin.
 - Verified owner removal and the ownerless warning in the live UI.
 - Verified password-length enforcement in the live UI.
+- Verified the database rejects final-admin deletion and truncation, and direct
+  client mutations of `platform_admins` are not permitted.
 - `npm run lint`, `npm run build`, and `git diff --check` pass.
 
-No schema or RLS changes were made in these slices.
+The final-admin safeguard is a focused database and RLS change. No unrelated
+schema or policy changes were made in these slices.
 
 ## Planned
 
@@ -75,6 +79,11 @@ manageable across the whole instance:
   existing account as its owner.
 - Never create project memberships automatically when granting platform-admin
   access.
+- Preserve any existing project memberships when granting platform-admin
+  access and show them as dormant while global access is active.
+- When revoking platform-admin access, show the dormant assignments and require
+  an explicit choice between restoring them (the default) or removing all
+  project memberships. Apply the demotion and any cleanup atomically.
 
 This slice should reuse the existing server authorization checks and membership
 operations where practical. It should not require an RLS change merely to build

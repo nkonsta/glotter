@@ -22,3 +22,10 @@ columns, rewrites policies, converts legacy `editor`/`viewer` roles to
 **Do not run this on a fresh install** — `tms_full_schema_v12.sql` already
 includes everything in it. It's kept here only for upgrading a pre-existing
 deployment.
+
+## Existing v12 install — final-admin safeguard
+
+Run **[`tms_final_admin_guard.sql`](./tms_final_admin_guard.sql)** once to make
+the final-platform-admin guarantee atomic and database-enforced. The patch also
+removes direct client mutations of `platform_admins`; administrative server code
+using the service role remains able to grant and revoke access.

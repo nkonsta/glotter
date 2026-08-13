@@ -193,9 +193,61 @@ SET search_path = '' AS $$
     );
 $$;
 
+-- Serialize platform-admin deletions so concurrent requests cannot both remove
+-- what each observed as one of multiple remaining admins.
+CREATE OR REPLACE FUNCTION serialize_platform_admin_deletes()
+RETURNS TRIGGER LANGUAGE plpgsql
+SET search_path = '' AS $$
+BEGIN
+  PERFORM pg_catalog.pg_advisory_xact_lock(194637201, 731945113);
+  RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION ensure_platform_admin_remains()
+RETURNS TRIGGER LANGUAGE plpgsql
+SET search_path = '' AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.platform_admins) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'At least one platform admin is required.',
+      CONSTRAINT = 'platform_admins_must_not_be_empty';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION prevent_platform_admin_truncate()
+RETURNS TRIGGER LANGUAGE plpgsql
+SET search_path = '' AS $$
+BEGIN
+  RAISE EXCEPTION USING
+    ERRCODE = '23514',
+    MESSAGE = 'The platform admin table cannot be truncated.',
+    CONSTRAINT = 'platform_admins_must_not_be_empty';
+END;
+$$;
+
 --------------------------------------------------------------------------------
--- 5) Audit Trigger
+-- 5) Triggers
 --------------------------------------------------------------------------------
+
+CREATE TRIGGER serialize_platform_admin_deletes
+  BEFORE DELETE ON public.platform_admins
+  FOR EACH STATEMENT EXECUTE FUNCTION public.serialize_platform_admin_deletes();
+
+CREATE TRIGGER ensure_platform_admin_remains
+  AFTER DELETE ON public.platform_admins
+  FOR EACH ROW EXECUTE FUNCTION public.ensure_platform_admin_remains();
+
+CREATE TRIGGER prevent_platform_admin_truncate
+  BEFORE TRUNCATE ON public.platform_admins
+  FOR EACH STATEMENT EXECUTE FUNCTION public.prevent_platform_admin_truncate();
+
+REVOKE EXECUTE ON FUNCTION public.serialize_platform_admin_deletes() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.ensure_platform_admin_remains() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.prevent_platform_admin_truncate() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE FUNCTION log_translation_change()
 RETURNS TRIGGER LANGUAGE plpgsql
@@ -303,8 +355,7 @@ CREATE POLICY owners_delete_members ON project_members
 -- Platform Admins
 CREATE POLICY admins_view_admins ON platform_admins
   FOR SELECT USING (is_platform_admin());
-CREATE POLICY admins_manage_admins ON platform_admins
-  FOR ALL USING (is_platform_admin());
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.platform_admins FROM anon, authenticated;
 
 -- Translation History
 CREATE POLICY view_translation_history ON translation_history
