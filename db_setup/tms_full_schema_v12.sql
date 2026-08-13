@@ -324,7 +324,7 @@ CREATE POLICY owners_update_projects ON projects
 CREATE POLICY owners_delete_projects ON projects
   FOR DELETE USING (is_project_owner(id));
 CREATE POLICY owners_insert_projects ON projects
-  FOR INSERT WITH CHECK (true);
+  FOR INSERT TO authenticated WITH CHECK (is_platform_admin());
 
 -- Project Languages
 CREATE POLICY view_project_languages ON project_languages

@@ -36,3 +36,16 @@ Run **[`tms_global_access_directory.sql`](./tms_global_access_directory.sql)**
 once before deploying the global access directory. It adds the service-role-only
 operation used to grant or revoke platform-admin access and to atomically remove
 project memberships when that is explicitly selected during demotion.
+
+## Existing v12 install — authenticated data access
+
+Run **[`tms_authenticated_data_access.sql`](./tms_authenticated_data_access.sql)**
+once to restrict project creation to authenticated platform admins and remove
+anonymous Data API privileges from all application tables. Existing
+authenticated access remains governed by the established RLS policies.
+
+## Existing install — disable unused GraphQL
+
+Run **[`tms_disable_graphql.sql`](./tms_disable_graphql.sql)** once when Glotter
+does not use Supabase's GraphQL endpoint. It removes only the `pg_graphql`
+extension; the REST Data API, Auth, and RLS policies are unaffected.
