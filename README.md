@@ -48,6 +48,10 @@ In the Supabase dashboard, open **SQL Editor**, paste the contents of
 [`db_setup/tms_full_schema_v12.sql`](./db_setup/tms_full_schema_v12.sql), and
 run it. This creates all tables, RLS policies, and helper functions.
 
+If AI translation will be enabled, also run
+[`db_setup/tms_ai_usage_controls.sql`](./db_setup/tms_ai_usage_controls.sql).
+It adds the server-only shared concurrency and hourly usage controls.
+
 > Ignore `db_setup/tms_acl_v12.sql` — it's a migration for upgrading an older
 > v11 database, not for fresh installs. See [`db_setup/README.md`](./db_setup/README.md).
 
@@ -66,7 +70,7 @@ Edit `.env.local`:
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Service role key. Server-only — used for saving translations and admin actions. **Never expose to the client.** |
 | `NEXT_PUBLIC_SITE_URL` | Recommended | Public origin (e.g. `http://localhost:3000`). Used for social-preview (Open Graph) image URLs. |
 | `OPENAI_API_KEY` | Optional | Enables AI translation. Without it, the rest of the app works; AI fill is disabled. |
-| `OPENAI_MODEL`, `OPENAI_BASE_URL`, `AI_*`, `NEXT_PUBLIC_AI_*` | Optional | Tune the AI provider/model and batching. See `env.example`. |
+| `OPENAI_MODEL`, `OPENAI_BASE_URL`, `AI_*`, `NEXT_PUBLIC_AI_*` | Optional | Tune the AI provider, limits, and batching. Set `AI_USAGE_LIMITS_ENABLED=true` in production after applying the AI usage SQL patch. See `env.example`. |
 
 > The service role key bypasses Row-Level Security. It is only read server-side
 > (in `app/api/**`) and is never sent to the browser. Keep it secret.
@@ -151,7 +155,22 @@ database level by Row-Level Security, not just in the UI.
 
 ### AI fill (optional)
 With an OpenAI key configured, use **AI fill missing…** to draft missing
-translations across languages, then review inline before saving.
+translations across languages, then review inline before saving. Source strings
+and glossary terms selected for translation are sent to the configured AI
+provider. Glotter's production logs record request metadata and usage, not
+source text, glossary contents, or generated translations.
+
+### Development checks
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+`npm run test:ai-smoke` is an explicit, billable provider smoke test. It loads
+the server-side OpenAI configuration and never runs as part of `npm test`.
 
 ---
 

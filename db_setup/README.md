@@ -12,6 +12,11 @@ Run it once against a new Supabase project (SQL Editor → paste → Run), then
 follow the bootstrap step in the root [README](../README.md#5-create-the-first-platform-admin)
 to grant yourself admin access.
 
+If the installation will use AI translation, also run
+**[`tms_ai_usage_controls.sql`](./tms_ai_usage_controls.sql)** before enabling
+`AI_USAGE_LIMITS_ENABLED`. The AI feature remains usable without the patch only
+while that flag is false.
+
 ## Existing v11 install — migration only
 
 **[`tms_acl_v12.sql`](./tms_acl_v12.sql)** is a one-time **migration** that
@@ -82,3 +87,10 @@ public-schema exposure opt-in.
 Run **[`tms_owner_membership_visibility.sql`](./tms_owner_membership_visibility.sql)**
 once so project owners can read the membership rows that their existing update
 and delete policies authorize them to manage.
+
+## Existing install — AI usage controls
+
+Run **[`tms_ai_usage_controls.sql`](./tms_ai_usage_controls.sql)** once before
+setting `AI_USAGE_LIMITS_ENABLED=true`. It adds private hourly usage counters,
+expiring concurrency leases, and service-role-only functions that reserve and
+release capacity atomically across serverless instances.

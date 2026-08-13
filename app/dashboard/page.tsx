@@ -32,7 +32,14 @@ import { Upload, Download, WandSparkles } from 'lucide-react';
 import AuthScreen from '@/components/auth/AuthScreen';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { supabase } from '@/lib/supabase';
-import type { AiSuggestedTranslation, AiTranslateResponseBody } from '@/lib/ai/types';
+import type { AiSuggestedTranslation } from '@/lib/ai/types';
+import { chunkAiEntries, chunkAiTargetLanguages } from '@/lib/ai/limits';
+import {
+  AiTranslateApiError,
+  appendAiRequestFailure,
+  mergeAiResponse,
+  requestAiTranslations,
+} from '@/lib/ai/client';
 
 const FALLBACK_NONE = '__none__';
 
@@ -195,7 +202,7 @@ export default function Home() {
   const canManageMembers = isPlatformAdmin || isOwner;
   const canEditCells = isPlatformAdmin || isOwner || editableLanguageSet.size > 0;
   const canImportData = isPlatformAdmin || isOwner;
-  const canUseAi = isPlatformAdmin || isOwner;
+  const canUseAi = isPlatformAdmin || isOwner || (allowedViewSet.size > 0 && editableLanguageSet.size > 0);
   const canManageLanguages = isPlatformAdmin || isOwner;
   const canDeleteProject = canManageLanguages;
   const canManageKeys = isPlatformAdmin || isOwner;
@@ -865,13 +872,15 @@ export default function Home() {
                     disabled={!canUseAi}
                     onClick={() => {
                       if (!canUseAi || sortedLanguages.length === 0) return;
-                      const selectedSource = sortedLanguages.find(l => l.code.toLowerCase() === 'en')?.code || sortedLanguages[0].code;
+                      const allowedSources = sortedLanguages.filter(lang => allowedViewSet.has(lang.code));
+                      const selectedSource = allowedSources.find(l => l.code.toLowerCase() === 'en')?.code || allowedSources[0]?.code;
+                      if (!selectedSource) return;
                       setAiSourceLang(selectedSource);
                       // default targets: visible languages except source with any missing values
                       const defaults = new Set<string>();
                       const visible = Array.from(visibleLanguages);
                       visible.forEach(code => {
-                        if (code === selectedSource) return;
+                        if (code === selectedSource || !editableLanguageSet.has(code)) return;
                         const hasMissing = translations.some(row => !row.translations[code]?.value);
                         if (hasMissing) defaults.add(code);
                       });
@@ -1244,7 +1253,7 @@ export default function Home() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>AI fill missing translations</DialogTitle>
-              <DialogDescription>Generate suggestions for missing cells while preserving placeholders.</DialogDescription>
+              <DialogDescription>Generate suggestions for missing cells while preserving placeholders. Source text is sent to the configured AI provider.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
@@ -1262,7 +1271,7 @@ export default function Home() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="max-h-64 overflow-auto w-64">
-                    {sortedLanguages.map(l => (
+                    {sortedLanguages.filter(l => allowedViewSet.has(l.code)).map(l => (
                       <DropdownMenuItem key={l.code} onClick={() => setAiSourceLang(l.code)}>
                         <span className="font-medium">{l.code.toUpperCase()}</span>
                         {l.name && <span className="text-xs text-muted ml-2">({l.name})</span>}
@@ -1274,7 +1283,7 @@ export default function Home() {
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Target languages</label>
                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-auto border border-border rounded-md p-2">
-                  {sortedLanguages.map(l => {
+                  {sortedLanguages.filter(l => editableLanguageSet.has(l.code)).map(l => {
                     const checked = aiTargets.has(l.code);
                     const disabled = l.code === aiSourceLang;
                     return (
@@ -1350,47 +1359,78 @@ export default function Home() {
                         setAiBusy(false);
                         return;
                       }
-                      // Per-run cap and chunked processing
-                      const cap = Number(process.env.NEXT_PUBLIC_AI_PREVIEW_CAP || 500);
-                      const chunkSize = Number(process.env.NEXT_PUBLIC_AI_CHUNK_SIZE || 50);
-                      const limited = adjusted.slice(0, cap);
-                      if (adjusted.length > cap) {
-                        toast({ title: 'Preview limited', description: `Showing first ${cap} rows. Apply in chunks.`, variant: 'info' });
+                      const requestedChunkSize = Number(process.env.NEXT_PUBLIC_AI_CHUNK_SIZE || 50);
+                      const entryChunks = chunkAiEntries(adjusted, requestedChunkSize);
+                      const targetChunks = chunkAiTargetLanguages(targets);
+                      const accessToken = session?.access_token;
+                      if (!accessToken) {
+                        throw new Error('Not authenticated. Please sign in again.');
                       }
                       aiCancelRef.current.cancelled = false;
-                      setAiChunking({ running: true, processed: 0, total: limited.length });
+                      setAiChunking({ running: true, processed: 0, total: adjusted.length });
                       const aggregate: Record<string, AiSuggestedTranslation[]> = {};
                       const glossary = aiGlossaryCsv
                         .split('\n').map(l => l.trim()).filter(Boolean)
                         .map(line => { const [source, target] = line.split(','); return { source: (source || '').trim(), target: (target || '').trim() }; })
                         .filter(t => t.source && t.target);
-                      for (let i = 0; i < limited.length; i += chunkSize) {
+                      let processed = 0;
+                      let failureCount = 0;
+                      let haltedError: AiTranslateApiError | null = null;
+                      for (const chunk of entryChunks) {
                         if (aiCancelRef.current.cancelled) break;
-                        const chunk = limited.slice(i, i + chunkSize);
-                        const controller = new AbortController();
-                        aiCancelRef.current.controller = controller;
-                        const res = await fetch('/api/ai-translate', {
-                          method: 'POST', headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            projectId: selectedProject,
-                            sourceLanguage: aiSourceLang,
-                            targetLanguages: targets,
-                            entries: chunk,
-                            options: { glossary, preservePlaceholders: true, dryRun: true },
-                          }),
-                          signal: controller.signal,
-                        });
-                        if (!res.ok) throw new Error(await res.text());
-                        const json = (await res.json()) as AiTranslateResponseBody;
-                        Object.entries(json.translations).forEach(([lang, list]) => {
-                          if (!aggregate[lang]) aggregate[lang] = [];
-                          aggregate[lang].push(...list);
-                        });
-                        setAiChunking({ running: true, processed: Math.min(i + chunk.length, limited.length), total: limited.length });
-                        aiCancelRef.current.controller = null;
+                        for (const targetChunk of targetChunks) {
+                          if (aiCancelRef.current.cancelled) break;
+                          if (haltedError) {
+                            appendAiRequestFailure(aggregate, chunk, targetChunk, haltedError);
+                            failureCount += chunk.length * targetChunk.length;
+                            continue;
+                          }
+                          const controller = new AbortController();
+                          aiCancelRef.current.controller = controller;
+                          try {
+                            const response = await requestAiTranslations({
+                              projectId: selectedProject,
+                              sourceLanguage: aiSourceLang,
+                              targetLanguages: targetChunk,
+                              entries: chunk,
+                              options: { glossary, preservePlaceholders: true, dryRun: true },
+                            }, accessToken, controller.signal);
+                            failureCount += mergeAiResponse(aggregate, response, chunk);
+                            const blockingFailure = response.failures.find(failure =>
+                              failure.code !== 'provider_malformed_output'
+                            );
+                            if (blockingFailure) {
+                              haltedError = new AiTranslateApiError({
+                                code: blockingFailure.code,
+                                message: blockingFailure.message,
+                                requestId: response.requestId,
+                                retryable: blockingFailure.retryable,
+                              });
+                            }
+                          } catch (error) {
+                            if (controller.signal.aborted) {
+                              aiCancelRef.current.cancelled = true;
+                              break;
+                            }
+                            if (!(error instanceof AiTranslateApiError)) throw error;
+                            haltedError = error;
+                            appendAiRequestFailure(aggregate, chunk, targetChunk, error);
+                            failureCount += chunk.length * targetChunk.length;
+                          } finally {
+                            aiCancelRef.current.controller = null;
+                          }
+                        }
+                        processed += chunk.length;
+                        setAiChunking({ running: true, processed, total: adjusted.length });
                       }
                       if (aiCancelRef.current.cancelled) {
                         toast({ title: 'Cancelled', description: 'Generation cancelled.', variant: 'info' });
+                      } else if (failureCount > 0) {
+                        toast({
+                          title: 'Some suggestions failed',
+                          description: `${failureCount} translation${failureCount === 1 ? '' : 's'} could not be generated. Completed suggestions were preserved.`,
+                          variant: 'error',
+                        });
                       }
                       setAiPreview(aggregate);
                       setAiChunking(null);
