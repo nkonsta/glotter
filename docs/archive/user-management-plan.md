@@ -91,7 +91,7 @@ schema or policy changes were made in these slices.
 ### Slice 4: RLS and database exposure audit
 
 - The expected object/operation matrix is checked in at
-  `db_setup/access_matrix.md`.
+  [`db_setup/audits/access_matrix.md`](../../db_setup/audits/access_matrix.md).
 - Deployed RLS policies, grants, helper functions, extensions, migration
   history, and advisor findings were reconciled with the checked-in schema.
 - Anonymous table access and unused GraphQL exposure were removed.

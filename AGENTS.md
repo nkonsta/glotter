@@ -5,7 +5,8 @@
 - `components/`: Feature components and UI primitives (`components/ui/`), plus auth/admin UIs.
 - `lib/`: Supabase client, data access, and shared utilities (e.g., `lib/translations.ts`).
 - `public/`: Static assets served by Next.js.
-- `db_setup/`: Database setup resources (keep Supabase schema changes here if added).
+- `docs/`: Product, design, active planning, operations, and archived project documentation. See `docs/README.md`.
+- `db_setup/`: Supabase schema, upgrades, ordered patches, optional features, and audits. See `db_setup/README.md`.
 
 ## Build, Test, and Development Commands
 - `npm install`: Install dependencies.
@@ -39,7 +40,7 @@ Environment setup:
 
 ## Configuration & Security Tips
 - Store secrets only in `.env.local`; never commit credentials.
-- Supabase schema expectations live in `README.md`—keep it updated if tables change.
+- Supabase schema expectations live in `db_setup/README.md` and the root `README.md`—keep both updated if tables change.
 
 ## Architecture Overview
 - UI renders in the Next.js App Router (`app/`) and composes feature components from `components/`.

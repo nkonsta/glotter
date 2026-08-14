@@ -1,7 +1,8 @@
 # Production Readiness Plan
 
 This document tracks the remaining work required before exposing Glotter to
-production users. The access-management work in `user_management_plan.md` is
+production users. The access-management work in
+[`user-management-plan.md`](../archive/user-management-plan.md) is
 complete; the items below are focused on the AI translation path and final
 deployment checks.
 
