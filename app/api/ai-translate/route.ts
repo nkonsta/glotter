@@ -12,6 +12,7 @@ import { validateSamePlaceholders } from '../../../lib/ai/placeholders';
 import { AiProviderError, publicErrorStatus, toAiProviderError, type AiErrorCode } from '../../../lib/ai/errors';
 import { logAi } from '../../../lib/ai/logging';
 import { releaseAiTranslationUsage, reserveAiTranslationUsage } from '../../../lib/ai/usageLimits';
+import { estimateAiTranslationWork } from '../../../lib/ai/usageWork';
 import {
   AI_MAX_ENTRIES_PER_REQUEST,
   AI_MAX_ENTRY_CHARACTERS,
@@ -199,6 +200,7 @@ export async function POST(req: NextRequest) {
     }
 
     const rawGlossary = isRecord(payload.options) ? payload.options.glossary : undefined;
+    let glossaryCharacters = 0;
     if (rawGlossary !== undefined) {
       if (!Array.isArray(rawGlossary) || rawGlossary.length > AI_MAX_GLOSSARY_TERMS) {
         return respondError(`Glossary cannot exceed ${AI_MAX_GLOSSARY_TERMS} terms.`, 400);
@@ -215,6 +217,7 @@ export async function POST(req: NextRequest) {
         ) {
           return respondError('Glossary terms must contain valid source and target strings.', 400);
         }
+        glossaryCharacters += term.source.length + term.target.length;
       }
     }
 
@@ -276,8 +279,21 @@ export async function POST(req: NextRequest) {
       return respondError('One or more languages are not active in this project.', 400);
     }
 
+    const configuredBatchSize = Number(process.env.AI_BATCH_SIZE || 20);
+    const configuredGroupSize = Number(process.env.AI_GROUP_SIZE || 20);
+    const batchSize = Math.min(
+      Number.isInteger(configuredBatchSize) && configuredBatchSize > 0 ? configuredBatchSize : 20,
+      Number.isInteger(configuredGroupSize) && configuredGroupSize > 0 ? configuredGroupSize : 20,
+      AI_MAX_ENTRIES_PER_REQUEST
+    );
+    const batchCount = Math.ceil(entries.length / batchSize);
     const startedAt = Date.now();
-    const workUnits = totalSourceCharacters * targetLanguages.length;
+    const workUnits = estimateAiTranslationWork({
+      sourceCharacters: totalSourceCharacters,
+      glossaryCharacters,
+      targetLanguageCount: targetLanguages.length,
+      batchCount,
+    });
     logAi('info', 'request_started', {
       request_id: reqId,
       user_id: authUser.user.id,
@@ -309,14 +325,6 @@ export async function POST(req: NextRequest) {
     let inputTokens = 0;
     let outputTokens = 0;
     let totalTokens = 0;
-
-    const configuredBatchSize = Number(process.env.AI_BATCH_SIZE || 20);
-    const configuredGroupSize = Number(process.env.AI_GROUP_SIZE || 20);
-    const batchSize = Math.min(
-      Number.isInteger(configuredBatchSize) && configuredBatchSize > 0 ? configuredBatchSize : 20,
-      Number.isInteger(configuredGroupSize) && configuredGroupSize > 0 ? configuredGroupSize : 20,
-      AI_MAX_ENTRIES_PER_REQUEST
-    );
 
     for (const lang of targetLanguages) {
       const suggestions: AiSuggestedTranslation[] = [];

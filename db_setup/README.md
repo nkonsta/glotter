@@ -73,7 +73,9 @@ project in all translation read/write policies.
 
 Run **[`tms_translation_history_trigger.sql`](./tms_translation_history_trigger.sql)**
 once so an authorized direct translation update can record its audit row without
-granting clients permission to insert forged history.
+granting clients permission to insert forged history. Re-run it on installations
+that applied an earlier version so direct Data API updates derive the history
+actor from the authenticated JWT instead of trusting the submitted row.
 
 ## Existing v12 install — least-privilege Data API
 

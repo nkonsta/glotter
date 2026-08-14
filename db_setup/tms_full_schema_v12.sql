@@ -298,10 +298,15 @@ GRANT EXECUTE ON FUNCTION public.can_edit_language(UUID, TEXT) TO authenticated,
 CREATE OR REPLACE FUNCTION log_translation_change()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = '' AS $$
+DECLARE
+  audit_actor UUID;
 BEGIN
   IF (TG_OP = 'UPDATE' AND OLD.value IS DISTINCT FROM NEW.value) THEN
+    -- Data API calls carry the caller in auth.uid(). Service-role backend calls
+    -- do not, so retain their server-validated updated_by value as a fallback.
+    audit_actor := COALESCE(auth.uid(), NEW.updated_by);
     INSERT INTO public.translation_history (translation_id, old_value, new_value, updated_by)
-    VALUES (NEW.id, OLD.value, NEW.value, NEW.updated_by);
+    VALUES (NEW.id, OLD.value, NEW.value, audit_actor);
   END IF;
   RETURN NEW;
 END;
