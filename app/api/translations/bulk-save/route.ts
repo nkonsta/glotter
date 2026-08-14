@@ -18,6 +18,8 @@ type MembershipRecord = {
   edit_languages?: unknown;
 };
 
+const MAX_POSTGREST_BATCH_SIZE = 100;
+
 function isBulkSavePayload(payload: unknown): payload is BulkSavePayload {
   if (!payload || typeof payload !== 'object') {
     return false;
@@ -113,7 +115,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ count: 0 });
   }
 
-  const chunkSize = payload.chunkSize ?? 1000;
+  const chunkSize = Math.min(payload.chunkSize ?? MAX_POSTGREST_BATCH_SIZE, MAX_POSTGREST_BATCH_SIZE);
 
   const { data: adminMatch, error: adminError } = await supabaseAdmin
     .from('platform_admins')

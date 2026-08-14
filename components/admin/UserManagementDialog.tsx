@@ -92,6 +92,8 @@ export default function UserManagementDialog({
 
   const [assignmentDraft, setAssignmentDraft] = useState<AssignmentDraft | null>(null);
   const [assigningProjectAccess, setAssigningProjectAccess] = useState(false);
+  const [confirmRemoveAssignmentId, setConfirmRemoveAssignmentId] = useState<string | null>(null);
+  const [removingAssignmentId, setRemovingAssignmentId] = useState<string | null>(null);
   const [recoveryProjectId, setRecoveryProjectId] = useState<string | null>(null);
   const [recoveryUserId, setRecoveryUserId] = useState('');
   const [recoveringProject, setRecoveringProject] = useState(false);
@@ -153,6 +155,7 @@ export default function UserManagementDialog({
     setAdminConfirmation(null);
     setRemoveMemberships(false);
     setAssignmentDraft(null);
+    setConfirmRemoveAssignmentId(null);
     setRecoveryProjectId(null);
     setRecoveryUserId('');
   }, [open, fetchDirectory]);
@@ -474,6 +477,48 @@ export default function UserManagementDialog({
     }
   }, [accessToken, assignmentDraft, usersById, projects, toast, fetchDirectory]);
 
+  const removeAssignment = useCallback(async (user: UserRecord, assignment: ProjectAssignment) => {
+    if (!accessToken) return;
+
+    setRemovingAssignmentId(assignment.id);
+    try {
+      const response = await fetch('/api/admin/project-members', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ projectId: assignment.projectId, userId: user.id }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const description = typeof payload.error === 'string' ? payload.error : 'Could not revoke project access.';
+        toast({ title: 'Failed to revoke project access', description, variant: 'error' });
+        return;
+      }
+
+      toast({
+        title: user.isPlatformAdmin ? 'Retained assignment removed' : 'Project access revoked',
+        description: user.isPlatformAdmin
+          ? `${accountLabel(user)} still has global access as a platform admin, but their retained ${assignment.projectName} assignment was removed.`
+          : `${accountLabel(user)} can no longer access ${assignment.projectName}. Their user account remains active.`,
+        variant: 'success',
+      });
+      setConfirmRemoveAssignmentId(null);
+      await fetchDirectory();
+    } catch (error) {
+      console.error('Failed to revoke project access', error);
+      toast({
+        title: 'Failed to revoke project access',
+        description: error instanceof Error ? error.message : 'Unexpected error occurred.',
+        variant: 'error',
+      });
+    } finally {
+      setRemovingAssignmentId(null);
+    }
+  }, [accessToken, toast, fetchDirectory]);
+
   const recoverOwnerlessProject = useCallback(async () => {
     if (!accessToken || !recoveryProjectId || !recoveryUserId) return;
     const project = projects.find((candidate) => candidate.id === recoveryProjectId);
@@ -537,7 +582,7 @@ export default function UserManagementDialog({
         <DialogHeader>
           <DialogTitle>Users &amp; access</DialogTitle>
           <DialogDescription>
-            Create accounts, grant only the access each person needs, and recover ownerless projects.
+            Create accounts, grant or revoke project access, and recover ownerless projects.
           </DialogDescription>
         </DialogHeader>
 
@@ -662,6 +707,10 @@ export default function UserManagementDialog({
               const confirmingDelete = confirmDeleteUserId === user.id;
               const confirmingAdmin = adminConfirmation?.userId === user.id;
               const updatingAdmin = updatingAdminUserId === user.id;
+              const confirmingAssignment = user.assignments.find((assignment) => assignment.id === confirmRemoveAssignmentId) ?? null;
+              const confirmingAssignmentOwnerCount = confirmingAssignment
+                ? (projectMembers.get(confirmingAssignment.projectId) ?? []).filter(({ assignment }) => assignment.role === 'owner').length
+                : 0;
               const availableProjects = projects.filter((project) => (
                 !user.assignments.some((assignment) => assignment.projectId === project.id)
               ));
@@ -744,15 +793,48 @@ export default function UserManagementDialog({
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {user.assignments.map((assignment) => (
-                          <span key={assignment.id} className="inline-flex flex-col rounded-md border border-border bg-surface-hover px-2 py-1 text-xs text-muted">
-                            <span className="font-medium text-foreground">{assignment.projectName} · {assignment.role === 'owner' ? 'Owner' : 'Member'}</span>
-                            {assignment.role === 'member' && <span>View {formatLanguages(assignment.viewLanguages)} · Edit {formatLanguages(assignment.editLanguages)}</span>}
-                            {user.isPlatformAdmin && <span className="text-warning">Dormant while global access is active</span>}
-                          </span>
+                          <div key={assignment.id} className="inline-flex items-center gap-2 rounded-md border border-border bg-surface-hover py-1 pl-2 pr-1 text-xs text-muted">
+                            <span className="inline-flex flex-col">
+                              <span className="font-medium text-foreground">{assignment.projectName} · {assignment.role === 'owner' ? 'Owner' : 'Member'}</span>
+                              {assignment.role === 'member' && <span>View {formatLanguages(assignment.viewLanguages)} · Edit {formatLanguages(assignment.editLanguages)}</span>}
+                              {user.isPlatformAdmin && <span className="text-warning">Dormant while global access is active</span>}
+                            </span>
+                            <Button
+                              variant="destructiveGhost"
+                              size="sm"
+                              className="h-6 px-2 text-xs"
+                              onClick={() => setConfirmRemoveAssignmentId(assignment.id)}
+                              disabled={Boolean(removingAssignmentId)}
+                              title={user.isPlatformAdmin ? 'Remove this retained assignment. Global platform-admin access will remain.' : undefined}
+                            >
+                              {user.isPlatformAdmin ? 'Remove retained' : 'Revoke'}
+                            </Button>
+                          </div>
                         ))}
                       </div>
                     )}
                   </div>
+
+                  {confirmingAssignment && (
+                    <div className="space-y-2 rounded-lg border border-danger/30 bg-[hsl(var(--danger)/0.06)] p-3">
+                      <p className="text-xs text-muted">
+                        {user.isPlatformAdmin
+                          ? `Remove the retained ${confirmingAssignment.projectName} assignment from ${accountLabel(user)}? They will still have access while they remain a platform admin.`
+                          : `Revoke ${confirmingAssignment.projectName} access from ${accountLabel(user)}? Their user account will remain active.`}
+                      </p>
+                      {confirmingAssignment.role === 'owner' && confirmingAssignmentOwnerCount === 1 && (
+                        <p className="text-xs text-warning">This is the project’s only owner. Revoking access will leave it ownerless, but a platform admin can assign a new owner later.</p>
+                      )}
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setConfirmRemoveAssignmentId(null)} disabled={removingAssignmentId === confirmingAssignment.id}>Cancel</Button>
+                        <Button variant="destructive" size="sm" onClick={() => void removeAssignment(user, confirmingAssignment)} disabled={removingAssignmentId === confirmingAssignment.id}>
+                          {removingAssignmentId === confirmingAssignment.id
+                            ? <span className="inline-flex items-center gap-2"><Spinner size={14} />Revoking…</span>
+                            : user.isPlatformAdmin ? 'Remove retained assignment' : 'Revoke project access'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {confirmingAdmin && (
                     <div className="space-y-3 rounded-lg border border-border bg-surface-hover p-3 text-sm">
