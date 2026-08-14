@@ -210,13 +210,16 @@ The completed Slice 4 registry additionally contains:
 
 ## Checked-in reconciliation
 
-- The deployed 22-policy set matches `db_setup/tms_full_schema_v12.sql`, the
+- The deployed 22-policy set matches
+  [`db_setup/schema/tms_full_schema_v12.sql`](../schema/tms_full_schema_v12.sql), the
   documented fresh-install baseline.
-- `translation-mgmt-prd_v12.md` is not a current policy source: it still lists
+- [`docs/product/translation-management-prd.md`](../../docs/product/translation-management-prd.md)
+  is not a current policy source: it still lists
   the removed `admins_manage_admins` policy and predates the deployed helper
   hardening. The final-admin safeguard intentionally removed that policy and
   revoked direct client mutations of `platform_admins`.
-- `db_setup/tms_acl_v12.sql` is a historical v11-to-v12 upgrade script, not the
+- [`db_setup/upgrades/tms_acl_v12.sql`](../upgrades/tms_acl_v12.sql) is a historical
+  v11-to-v12 upgrade script, not the
   deployed-state baseline.
 
 ## Read-only effective-access checks
@@ -293,7 +296,8 @@ protection being disabled. Those findings were not changed in this correction.
 The application does not use GraphQL, the previous 24 hours of API logs showed
 no GraphQL traffic, and no application database object depended on
 `pg_graphql`. Disabling the extension was therefore approved as a separate,
-reversible change. See `tms_disable_graphql.sql`.
+reversible change. See
+[`db_setup/patches/tms_disable_graphql.sql`](../patches/tms_disable_graphql.sql).
 
 Migration `20260813122742_disable_unused_graphql` was applied on 2026-08-13.
 Post-change verification confirmed that `pg_graphql` and `graphql.resolve` no
@@ -424,7 +428,8 @@ The final Security Advisor run reports six warnings:
   Glotter continues to enforce a 12-character minimum in its managed account
   flows.
 
-The expected contract is checked in as `db_setup/access_matrix.md`. Performance
+The expected contract is checked in as
+[`db_setup/audits/access_matrix.md`](./access_matrix.md). Performance
 Advisor notices were reviewed separately and were not treated as security
 corrections in this slice.
 

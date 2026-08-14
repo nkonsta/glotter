@@ -45,14 +45,14 @@ from **Project Settings → API**:
 ### 2. Create the database schema
 
 In the Supabase dashboard, open **SQL Editor**, paste the contents of
-[`db_setup/tms_full_schema_v12.sql`](./db_setup/tms_full_schema_v12.sql), and
+[`db_setup/schema/tms_full_schema_v12.sql`](./db_setup/schema/tms_full_schema_v12.sql), and
 run it. This creates all tables, RLS policies, and helper functions.
 
 If AI translation will be enabled, also run
-[`db_setup/tms_ai_usage_controls.sql`](./db_setup/tms_ai_usage_controls.sql).
+[`db_setup/optional/tms_ai_usage_controls.sql`](./db_setup/optional/tms_ai_usage_controls.sql).
 It adds the server-only shared concurrency and hourly usage controls.
 
-> Ignore `db_setup/tms_acl_v12.sql` — it's a migration for upgrading an older
+> Ignore `db_setup/upgrades/tms_acl_v12.sql` — it's a migration for upgrading an older
 > v11 database, not for fresh installs. See [`db_setup/README.md`](./db_setup/README.md).
 
 ### 3. Configure environment variables
@@ -205,6 +205,10 @@ expose an instance publicly:
 
 Run Supabase's database linter (or `get_advisors`) periodically to catch new issues.
 
+Free Supabase projects do not include downloadable automatic backups. Follow
+the [manual backup and restore guide](./docs/operations/manual-supabase-backups.md)
+to create off-site role, schema, and data dumps with the Supabase CLI.
+
 ---
 
 ## Troubleshooting
@@ -237,6 +241,10 @@ glotter/
 │       └── ai-translate/        # AI drafting
 ├── components/                  # Grid, auth, UI primitives
 ├── lib/                         # Supabase clients, queries, theme, AI
-├── db_setup/                    # SQL schema + migration (see its README)
+├── docs/                        # Product, design, plans, operations, and archive
+├── db_setup/                    # Schema, upgrades, patches, optional SQL, and audits
 └── env.example                  # Environment variable template
 ```
+
+See the [documentation index](./docs/README.md) and
+[database setup guide](./db_setup/README.md) for the detailed layout.

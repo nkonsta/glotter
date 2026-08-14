@@ -1,98 +1,74 @@
 # Database setup
 
-SQL for the Supabase/Postgres backend.
+Supabase/Postgres resources are grouped by how they are used:
 
-## Fresh install — run this
+```text
+db_setup/
+├── schema/      # Complete baseline for a new project
+├── upgrades/    # Version-to-version upgrades for older installations
+├── patches/     # Ordered changes for existing installations
+├── optional/    # SQL required only by optional features
+└── audits/      # Access contract and deployed-policy records
+```
 
-**[`tms_full_schema_v12.sql`](./tms_full_schema_v12.sql)** is the clean-install
-baseline. It creates every table, constraint, index, helper function, the audit
-trigger, and all Row-Level Security policies in a single transaction.
+Do not run every SQL file on every database. Choose the path that matches the
+installation below.
 
-Run it once against a new Supabase project (SQL Editor → paste → Run), then
-follow the bootstrap step in the root [README](../README.md#5-create-the-first-platform-admin)
-to grant yourself admin access.
+## Fresh install
 
-If the installation will use AI translation, also run
-**[`tms_ai_usage_controls.sql`](./tms_ai_usage_controls.sql)** before enabling
-`AI_USAGE_LIMITS_ENABLED`. The AI feature remains usable without the patch only
-while that flag is false.
+Run [`schema/tms_full_schema_v12.sql`](./schema/tms_full_schema_v12.sql) once in
+the Supabase SQL Editor. It creates the current tables, constraints, indexes,
+helper functions, audit trigger, grants, and Row-Level Security policies in one
+transaction.
 
-## Existing v11 install — migration only
+Then follow the bootstrap step in the root
+[README](../README.md#5-create-the-first-platform-admin) to grant the first
+platform administrator access.
 
-**[`tms_acl_v12.sql`](./tms_acl_v12.sql)** is a one-time **migration** that
-upgrades an older v11 database to the v12 per-language access model (adds
-columns, rewrites policies, converts legacy `editor`/`viewer` roles to
-`member`).
+The baseline already contains the existing-install changes in `patches/`. Do
+not run those files on a fresh install.
 
-**Do not run this on a fresh install** — `tms_full_schema_v12.sql` already
-includes everything in it. It's kept here only for upgrading a pre-existing
-deployment.
+If AI translation will be enabled, also follow [Optional AI usage
+controls](#optional-ai-usage-controls).
 
-## Existing v12 install — final-admin safeguard
+## Existing v11 install
 
-Run **[`tms_final_admin_guard.sql`](./tms_final_admin_guard.sql)** once to make
-the final-platform-admin guarantee atomic and database-enforced. The patch also
-removes direct client mutations of `platform_admins`; administrative server code
-using the service role remains able to grant and revoke access.
+First run [`upgrades/tms_acl_v12.sql`](./upgrades/tms_acl_v12.sql) once. This
+upgrades the legacy v11 access model to v12, including per-language access and
+conversion of legacy `editor` and `viewer` memberships to `member`.
 
-## Existing v12 install — global access directory
+After that succeeds, apply the existing-install patches below in order. Do not
+run the v11 upgrade on a fresh install.
 
-Run **[`tms_global_access_directory.sql`](./tms_global_access_directory.sql)**
-once before deploying the global access directory. It adds the service-role-only
-operation used to grant or revoke platform-admin access and to atomically remove
-project memberships when that is explicitly selected during demotion.
+## Existing v12 install: patch order
 
-## Existing v12 install — authenticated data access
+Apply only patches not already recorded for the target database, in this order:
 
-Run **[`tms_authenticated_data_access.sql`](./tms_authenticated_data_access.sql)**
-once to restrict project creation to authenticated platform admins and remove
-anonymous Data API privileges from all application tables. Existing
-authenticated access remains governed by the established RLS policies.
+1. [`patches/tms_final_admin_guard.sql`](./patches/tms_final_admin_guard.sql) — enforce the final-platform-admin guarantee and make admin mutations server-only.
+2. [`patches/tms_global_access_directory.sql`](./patches/tms_global_access_directory.sql) — add the service-role-only platform-admin and membership operation.
+3. [`patches/tms_authenticated_data_access.sql`](./patches/tms_authenticated_data_access.sql) — remove anonymous application-table access and restrict project creation.
+4. [`patches/tms_disable_graphql.sql`](./patches/tms_disable_graphql.sql) — remove the unused `pg_graphql` extension. Skip this only if the deployment deliberately uses Supabase GraphQL.
+5. [`patches/tms_harden_authorization_helper_execution.sql`](./patches/tms_harden_authorization_helper_execution.sql) — remove anonymous execution of authorization helpers.
+6. [`patches/tms_translation_scope_integrity.sql`](./patches/tms_translation_scope_integrity.sql) — enforce same-project translation key and language scope.
+7. [`patches/tms_translation_history_trigger.sql`](./patches/tms_translation_history_trigger.sql) — protect audit-history creation for direct translation updates.
+8. [`patches/tms_least_privilege_data_api.sql`](./patches/tms_least_privilege_data_api.sql) — replace broad table privileges with the operations Glotter uses and make future exposure opt-in.
+9. [`patches/tms_owner_membership_visibility.sql`](./patches/tms_owner_membership_visibility.sql) — let project owners read membership rows they are authorized to manage.
 
-## Existing install — disable unused GraphQL
+Each patch is intended to be applied once. Review its header and run it in the
+Supabase SQL Editor. For a production database, create and verify a manual
+backup before applying changes; see the [backup guide](../docs/operations/manual-supabase-backups.md).
 
-Run **[`tms_disable_graphql.sql`](./tms_disable_graphql.sql)** once when Glotter
-does not use Supabase's GraphQL endpoint. It removes only the `pg_graphql`
-extension; the REST Data API, Auth, and RLS policies are unaffected.
+## Optional AI usage controls
 
-## Existing v12 install — authorization-helper execution
+Run [`optional/tms_ai_usage_controls.sql`](./optional/tms_ai_usage_controls.sql)
+once before setting `AI_USAGE_LIMITS_ENABLED=true`. It adds private hourly
+usage counters, expiring concurrency leases, and service-role-only functions
+that reserve and release capacity across serverless instances.
 
-Run
-**[`tms_harden_authorization_helper_execution.sql`](./tms_harden_authorization_helper_execution.sql)**
-once to remove anonymous execution of the five RLS authorization helpers while
-retaining the authenticated and service-role execution required by the app and
-its policies.
+The rest of Glotter works without this file. AI translation can run without the
+database controls only while `AI_USAGE_LIMITS_ENABLED=false`.
 
-## Existing v12 install — translation scope integrity
+## Audit references
 
-Run **[`tms_translation_scope_integrity.sql`](./tms_translation_scope_integrity.sql)**
-once to require a translation key and its language row to belong to the same
-project in all translation read/write policies.
-
-## Existing v12 install — translation-history trigger
-
-Run **[`tms_translation_history_trigger.sql`](./tms_translation_history_trigger.sql)**
-once so an authorized direct translation update can record its audit row without
-granting clients permission to insert forged history. Re-run it on installations
-that applied an earlier version so direct Data API updates derive the history
-actor from the authenticated JWT instead of trusting the submitted row.
-
-## Existing v12 install — least-privilege Data API
-
-Run **[`tms_least_privilege_data_api.sql`](./tms_least_privilege_data_api.sql)**
-once to replace broad table privileges with the exact Data API operations used
-by Glotter, target application policies to signed-in users, and make future
-public-schema exposure opt-in.
-
-## Existing v12 install — owner membership visibility
-
-Run **[`tms_owner_membership_visibility.sql`](./tms_owner_membership_visibility.sql)**
-once so project owners can read the membership rows that their existing update
-and delete policies authorize them to manage.
-
-## Existing install — AI usage controls
-
-Run **[`tms_ai_usage_controls.sql`](./tms_ai_usage_controls.sql)** once before
-setting `AI_USAGE_LIMITS_ENABLED=true`. It adds private hourly usage counters,
-expiring concurrency leases, and service-role-only functions that reserve and
-release capacity atomically across serverless instances.
+- [`audits/access_matrix.md`](./audits/access_matrix.md) defines the intended authorization contract.
+- [`audits/rls_policy_inventory.md`](./audits/rls_policy_inventory.md) records the deployed RLS audit and its validation history.
