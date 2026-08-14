@@ -25,8 +25,13 @@ Then follow the bootstrap step in the root
 [README](../README.md#5-create-the-first-platform-admin) to grant the first
 platform administrator access.
 
-The baseline already contains the existing-install changes in `patches/`. Do
-not run those files on a fresh install.
+Glotter uses the REST Data API rather than GraphQL. Unless the deployment
+deliberately uses Supabase GraphQL, also run
+[`patches/tms_disable_graphql.sql`](./patches/tms_disable_graphql.sql) to remove
+the unused `pg_graphql` extension.
+
+The baseline already contains the other existing-install changes in
+`patches/`. Do not run the remaining patch files on a fresh install.
 
 If AI translation will be enabled, also follow [Optional AI usage
 controls](#optional-ai-usage-controls).

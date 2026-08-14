@@ -709,7 +709,9 @@ export default function UserManagementDialog({
               const updatingAdmin = updatingAdminUserId === user.id;
               const confirmingAssignment = user.assignments.find((assignment) => assignment.id === confirmRemoveAssignmentId) ?? null;
               const confirmingAssignmentOwnerCount = confirmingAssignment
-                ? (projectMembers.get(confirmingAssignment.projectId) ?? []).filter(({ assignment }) => assignment.role === 'owner').length
+                ? (projectMembers.get(confirmingAssignment.projectId) ?? []).filter(({ user: projectUser, assignment }) => (
+                    !projectUser.isPlatformAdmin && assignment.role === 'owner'
+                  )).length
                 : 0;
               const availableProjects = projects.filter((project) => (
                 !user.assignments.some((assignment) => assignment.projectId === project.id)
