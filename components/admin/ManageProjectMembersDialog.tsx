@@ -39,12 +39,12 @@ const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string; helper: string }>
   {
     value: 'owner',
     label: 'Owner',
-    helper: 'Full project control. Access to all languages and management tools.',
+    helper: 'Full project control, including every language and access management.',
   },
   {
     value: 'member',
     label: 'Member',
-    helper: 'Customize view/edit languages per collaborator.',
+    helper: 'Translation access is limited to the view and edit languages selected below.',
   },
 ];
 
@@ -365,13 +365,15 @@ export default function ManageProjectMembersDialog({
         }
 
         toast({
-          title: 'Member added',
+          title: 'Project access granted',
           description:
             payload.status === 'updated'
-              ? 'Existing member access updated.'
+              ? `${selectedAccount.email} already had project access, so their role and language permissions were updated.`
               : payload.status === 'unchanged'
-                ? 'User already has the same access.'
-                : 'Account added successfully.',
+                ? `${selectedAccount.email} already has exactly this project access.`
+                : role === 'owner'
+                  ? `${selectedAccount.email} is now an owner with full project control.`
+                  : `${selectedAccount.email} now has member access. Review the view and edit languages below.`,
           variant: 'success',
         });
 
@@ -461,11 +463,13 @@ export default function ManageProjectMembersDialog({
       }
 
       toast({
-        title: 'Access updated',
+        title: 'Project access updated',
         description:
           payload.status === 'unchanged'
             ? `${editingMember.email} already has the same access.`
-            : `Updated permissions for ${editingMember.email}.`,
+            : editRole === 'owner'
+              ? `${editingMember.email} is now an owner with full project control.`
+              : `${editingMember.email} now has the selected view and edit permissions.`,
         variant: 'success',
       });
 
@@ -505,7 +509,7 @@ export default function ManageProjectMembersDialog({
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           const description = typeof payload.error === 'string' ? payload.error : 'Could not remove member.';
-          toast({ title: 'Failed to remove member', description, variant: 'error' });
+          toast({ title: 'Failed to remove project access', description, variant: 'error' });
           if (response.status === 401 || response.status === 403) {
             onOpenChange(false);
           }
@@ -514,14 +518,14 @@ export default function ManageProjectMembersDialog({
 
         setMembers((prev) => prev.filter((m) => m.id !== member.id));
         toast({
-          title: 'Member removed',
-          description: `${member.email ?? member.userId} has been removed from this project.`,
+          title: 'Project access removed',
+          description: `${member.email ?? member.userId} can no longer access this project. Their user account is still active.`,
           variant: 'success',
         });
       } catch (error) {
         console.error('Failed to remove project member', error);
         toast({
-          title: 'Failed to remove member',
+          title: 'Failed to remove project access',
           description: error instanceof Error ? error.message : 'Unexpected error occurred.',
           variant: 'error',
         });
@@ -537,11 +541,15 @@ export default function ManageProjectMembersDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Manage project members</DialogTitle>
+            <DialogTitle>Project access</DialogTitle>
             <DialogDescription>
-              Add existing Glotter accounts to the {projectName ?? 'selected'} project and adjust their access levels.
+              Grant existing accounts access to {projectName ?? 'the selected project'} and control what they can view or edit.
             </DialogDescription>
           </DialogHeader>
+
+          <div className="rounded-lg border border-border bg-surface-hover p-3 text-xs text-muted">
+            <p><span className="font-medium text-foreground">Project access</span> applies only to this project. Owners have full control; members are limited by language permissions. Platform admins already have global access and do not need an assignment here.</p>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="space-y-2">
@@ -584,7 +592,7 @@ export default function ManageProjectMembersDialog({
                 </Button>
               </div>
               <p className="text-xs text-muted">
-                New accounts must be created by a platform admin in User Management.
+                Need a new account? A platform admin must create it first in Users &amp; access.
               </p>
             </div>
 
@@ -608,6 +616,7 @@ export default function ManageProjectMembersDialog({
                     <button
                       key={option.value}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => {
                         setRole(option.value);
                         if (option.value === 'member' && viewSelection.size === 0) {
@@ -635,6 +644,7 @@ export default function ManageProjectMembersDialog({
               <div className="space-y-3">
                 <div>
                   <span className="block text-sm font-medium text-muted">View languages</span>
+                  <p className="mt-1 text-xs text-muted">The member can open and read these languages.</p>
                   {availableLanguages.length === 0 ? (
                     <p className="mt-1 text-xs text-warning">
                       Add project languages before assigning restricted access.
@@ -662,7 +672,7 @@ export default function ManageProjectMembersDialog({
                 <div>
                   <span className="block text-sm font-medium text-muted">Edit languages</span>
                   <p className="mt-1 text-xs text-muted">
-                    Editors must first have view access. Leave unchecked for read-only.
+                    The member can change translations in these languages. View access is required first; leave all unchecked for read-only access.
                   </p>
                   <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {Array.from(viewSelection).map((code) => {
@@ -696,7 +706,7 @@ export default function ManageProjectMembersDialog({
                     Adding…
                   </span>
                 ) : (
-                  'Add member'
+                  'Grant project access'
                 )}
               </Button>
             </div>
@@ -704,7 +714,7 @@ export default function ManageProjectMembersDialog({
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">Current members</h3>
+              <h3 className="text-sm font-semibold text-foreground">People with project access</h3>
               {loadingMembers && (
                 <span className="inline-flex items-center gap-2 text-xs text-muted">
                   <Spinner size={14} />
@@ -715,7 +725,7 @@ export default function ManageProjectMembersDialog({
 
             {!loadingMembers && sortedMembers.length === 0 && (
               <p className="text-sm text-muted border border-dashed border-border rounded-lg px-3 py-4 text-center">
-                No members found for this project yet. Add an existing account above to get started.
+                No accounts have project access yet. Find an existing account above to get started.
               </p>
             )}
 
@@ -741,6 +751,11 @@ export default function ManageProjectMembersDialog({
                       {confirmRemoveMemberId === member.id && member.role === 'owner' && ownerCount === 1 && (
                         <p className="text-xs text-warning">
                           Removing this owner will leave the project ownerless. Platform admins can still manage it.
+                        </p>
+                      )}
+                      {confirmRemoveMemberId === member.id && (
+                        <p className="text-xs text-muted">
+                          Remove project access for {member.email ?? member.userId}? Their user account will remain active.
                         </p>
                       )}
                     </div>
@@ -775,7 +790,7 @@ export default function ManageProjectMembersDialog({
                                   Removing…
                                 </span>
                               ) : (
-                                'Remove'
+                                'Remove project access'
                               )}
                             </Button>
                           </>
@@ -802,7 +817,7 @@ export default function ManageProjectMembersDialog({
                               onClick={() => setConfirmRemoveMemberId(member.id)}
                               disabled={updatingMemberId === member.id || removingMemberId === member.id}
                             >
-                              Remove
+                              Remove project access
                             </Button>
                           </>
                         )}
@@ -826,7 +841,7 @@ export default function ManageProjectMembersDialog({
       }}>
         <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit member access</DialogTitle>
+            <DialogTitle>Edit project access</DialogTitle>
             <DialogDescription>
               Adjust role and language permissions for {editingMember?.email ?? 'this member'}.
             </DialogDescription>
@@ -848,6 +863,7 @@ export default function ManageProjectMembersDialog({
                       <button
                         key={option.value}
                         type="button"
+                        aria-pressed={active}
                         onClick={() => {
                           setEditRole(option.value);
                           if (option.value === 'member' && editViewSelection.size === 0) {
@@ -875,6 +891,7 @@ export default function ManageProjectMembersDialog({
                 <div className="space-y-3">
                   <div>
                     <span className="block text-sm font-medium text-muted">View languages</span>
+                    <p className="mt-1 text-xs text-muted">The member can open and read these languages.</p>
                     {availableLanguages.length === 0 ? (
                       <p className="mt-1 text-xs text-warning">
                         Add project languages before assigning restricted access.
@@ -901,7 +918,7 @@ export default function ManageProjectMembersDialog({
 
                   <div>
                     <span className="block text-sm font-medium text-muted">Edit languages</span>
-                    <p className="mt-1 text-xs text-muted">Editors must first have view access.</p>
+                    <p className="mt-1 text-xs text-muted">The member can change translations in these languages. View access is required first; leave all unchecked for read-only access.</p>
                     <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                       {Array.from(editViewSelection).map((code) => {
                         const lang = languagesByCode.get(code) ?? null;

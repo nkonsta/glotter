@@ -713,7 +713,7 @@ export default function Home() {
                     <DropdownMenuContent className="w-48" align="start">
                       {canManageMembers && (
                         <>
-                          <DropdownMenuItem onClick={() => setIsManageMembersOpen(true)}>Manage members…</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setIsManageMembersOpen(true)}>Project access…</DropdownMenuItem>
                           {(canManageLanguages || canDeleteProject) && <DropdownMenuSeparator />}
                         </>
                       )}
@@ -733,7 +733,7 @@ export default function Home() {
             <ThemeToggle />
             {isPlatformAdmin && (
               <Button variant="outline" size="sm" onClick={() => setIsUserManagementOpen(true)}>
-                Access directory
+                Users &amp; access
               </Button>
             )}
             <button

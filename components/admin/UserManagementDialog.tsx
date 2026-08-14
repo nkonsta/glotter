@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -107,7 +107,7 @@ export default function UserManagementDialog({
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const message = typeof payload.error === 'string' ? payload.error : 'Failed to load access directory.';
+        const message = typeof payload.error === 'string' ? payload.error : 'Failed to load users and access.';
         if (response.status === 401 || response.status === 403) {
           toast({ title: 'Access denied', description: message, variant: 'error' });
           onOpenChange(false);
@@ -130,7 +130,7 @@ export default function UserManagementDialog({
     } catch (error) {
       console.error('Failed to fetch access directory', error);
       toast({
-        title: 'Could not load access directory',
+        title: 'Could not load users and access',
         description: error instanceof Error ? error.message : 'Something went wrong.',
         variant: 'error',
       });
@@ -227,15 +227,32 @@ export default function UserManagementDialog({
           return;
         }
 
+        const createdUserId = typeof payload.user?.id === 'string' ? payload.user.id : null;
+        const firstProject = projects[0] ?? null;
         toast({
           title: 'User created',
-          description: `${displayName.trim() || email.trim()} can now sign in.`,
+          description: firstProject && createdUserId
+            ? `${displayName.trim() || email.trim()} can sign in. Now choose their project role and editable languages.`
+            : !firstProject
+              ? `${displayName.trim() || email.trim()} can sign in, but there are no projects available to assign yet.`
+              : `${displayName.trim() || email.trim()} can sign in. Use Add project access below to finish setup.`,
           variant: 'success',
         });
         setEmail('');
         setDisplayName('');
         setPassword('');
         setShowCreateUser(false);
+        setSearchQuery('');
+        if (firstProject && createdUserId) {
+          const firstLanguage = firstProject.languages[0]?.code;
+          setAssignmentDraft({
+            userId: createdUserId,
+            projectId: firstProject.id,
+            role: 'member',
+            viewLanguages: new Set(firstLanguage ? [firstLanguage] : []),
+            editLanguages: new Set(),
+          });
+        }
         await fetchDirectory();
       } catch (error) {
         console.error('Failed to create user', error);
@@ -248,7 +265,7 @@ export default function UserManagementDialog({
         setSubmitting(false);
       }
     },
-    [accessToken, email, displayName, password, toast, fetchDirectory]
+    [accessToken, email, displayName, password, projects, toast, fetchDirectory]
   );
 
   const handleDeleteUser = useCallback(
@@ -270,12 +287,12 @@ export default function UserManagementDialog({
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           const description = typeof payload.error === 'string' ? payload.error : 'Could not delete user.';
-          toast({ title: 'Failed to delete user', description, variant: 'error' });
+          toast({ title: 'Failed to delete user account', description, variant: 'error' });
           return;
         }
 
         toast({
-          title: 'User deleted',
+          title: 'User account deleted',
           description: `${user.email ?? user.id} has been permanently deleted.`,
           variant: 'success',
         });
@@ -283,7 +300,7 @@ export default function UserManagementDialog({
       } catch (error) {
         console.error('Failed to delete user', error);
         toast({
-          title: 'Failed to delete user',
+          title: 'Failed to delete user account',
           description: error instanceof Error ? error.message : 'Unexpected error occurred.',
           variant: 'error',
         });
@@ -436,7 +453,11 @@ export default function UserManagementDialog({
       const project = projects.find((candidate) => candidate.id === assignmentDraft.projectId);
       toast({
         title: 'Project access assigned',
-        description: `${accountLabel(user)} can now access ${project?.name ?? 'the project'}.`,
+        description: assignmentDraft.role === 'owner'
+          ? `${accountLabel(user)} is now an owner of ${project?.name ?? 'the project'} with full project control.`
+          : assignmentDraft.editLanguages.size > 0
+            ? `${accountLabel(user)} can view ${formatLanguages(Array.from(assignmentDraft.viewLanguages))} and edit ${formatLanguages(Array.from(assignmentDraft.editLanguages))} in ${project?.name ?? 'the project'}.`
+            : `${accountLabel(user)} has read-only access to ${formatLanguages(Array.from(assignmentDraft.viewLanguages))} in ${project?.name ?? 'the project'}.`,
         variant: 'success',
       });
       setAssignmentDraft(null);
@@ -514,11 +535,43 @@ export default function UserManagementDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Access directory</DialogTitle>
+          <DialogTitle>Users &amp; access</DialogTitle>
           <DialogDescription>
-            Review platform and project access, manage accounts, and recover ownerless projects.
+            Create accounts, grant only the access each person needs, and recover ownerless projects.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="space-y-5">
+          <details className="group rounded-lg border border-border bg-surface-hover">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm transition-colors hover:bg-surface [&::-webkit-details-marker]:hidden">
+              <span>
+                <span className="block font-medium text-foreground">How access works</span>
+                <span className="block text-xs text-muted">Create an account, grant a project, then choose languages.</span>
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden="true" />
+            </summary>
+            <div className="space-y-3 border-t border-border p-4">
+              <ol className="grid gap-3 text-sm sm:grid-cols-3" aria-label="User access setup steps">
+                {[
+                  ['1', 'Create account', 'Set the user’s sign-in details.'],
+                  ['2', 'Grant project access', 'Choose a project and role.'],
+                  ['3', 'Choose editable languages', 'Give members view or edit access.'],
+                ].map(([step, title, description]) => (
+                  <li key={step} className="flex gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-semibold text-accent">{step}</span>
+                    <span>
+                      <span className="block font-medium text-foreground">{title}</span>
+                      <span className="block text-xs text-muted">{description}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <div className="grid gap-2 border-t border-border pt-3 text-xs text-muted sm:grid-cols-2">
+                <p><span className="font-medium text-foreground">Platform admin:</span> Full access to every project, plus account and access management.</p>
+                <p><span className="font-medium text-foreground">Project access:</span> Owners control one project; members only see or edit their assigned languages.</p>
+              </div>
+            </div>
+          </details>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <input
@@ -526,7 +579,7 @@ export default function UserManagementDialog({
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Search accounts or projects"
-            aria-label="Search access directory"
+            aria-label="Search users and access"
             className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[hsl(var(--accent)/0.5)]"
           />
           <Button variant="outline" onClick={() => setShowCreateUser((current) => !current)}>
@@ -649,7 +702,7 @@ export default function UserManagementDialog({
                           disabled={isSelf || updatingAdmin}
                           title={isSelf ? 'Ask another admin to revoke your access.' : undefined}
                         >
-                          Revoke admin
+                          Revoke platform admin
                         </Button>
                       ) : (
                         <Button
@@ -658,7 +711,7 @@ export default function UserManagementDialog({
                           onClick={() => setAdminConfirmation({ userId: user.id, action: 'grant' })}
                           disabled={updatingAdmin}
                         >
-                          Grant admin
+                          Grant platform admin
                         </Button>
                       )}
                       {!user.isPlatformAdmin && (
@@ -678,7 +731,7 @@ export default function UserManagementDialog({
                           onClick={() => setConfirmDeleteUserId(user.id)}
                           disabled={isDeleting}
                         >
-                          Delete
+                          Delete user account
                         </Button>
                       )}
                     </div>
@@ -736,12 +789,12 @@ export default function UserManagementDialog({
                   {confirmingDelete && (
                     <div className="space-y-2 rounded-lg border border-danger/30 bg-[hsl(var(--danger)/0.06)] p-3">
                       <p className="text-xs text-warning">
-                        This permanently removes all project access. Projects where this is the only owner will become ownerless.
+                        Permanently delete {accountLabel(user)}’s sign-in account and all project access? This cannot be undone. Projects where they are the only owner will become ownerless.
                       </p>
                       <div className="flex justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={() => setConfirmDeleteUserId(null)} disabled={isDeleting}>Cancel</Button>
                         <Button variant="destructive" size="sm" onClick={() => void handleDeleteUser(user)} disabled={isDeleting}>
-                          {isDeleting ? <span className="inline-flex items-center gap-2"><Spinner size={14} />Deleting…</span> : 'Confirm delete'}
+                          {isDeleting ? <span className="inline-flex items-center gap-2"><Spinner size={14} />Deleting…</span> : 'Delete user account'}
                         </Button>
                       </div>
                     </div>
@@ -770,6 +823,11 @@ export default function UserManagementDialog({
                             <option value="member">Member</option>
                             <option value="owner">Owner</option>
                           </select>
+                          <span className="block font-normal">
+                            {assignmentDraft.role === 'owner'
+                              ? 'Owners have full project control and access to every language.'
+                              : 'Members only see and edit the languages selected below.'}
+                          </span>
                         </label>
                       </div>
 
@@ -777,6 +835,7 @@ export default function UserManagementDialog({
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="space-y-2">
                             <p className="text-xs font-medium text-muted">View languages</p>
+                            <p className="text-xs text-muted">The member can open and read these languages.</p>
                             {selectedAssignmentProject.languages.length === 0 ? (
                               <p className="text-xs text-warning">This project has no active languages.</p>
                             ) : selectedAssignmentProject.languages.map((language) => (
@@ -792,6 +851,7 @@ export default function UserManagementDialog({
                           </div>
                           <div className="space-y-2">
                             <p className="text-xs font-medium text-muted">Edit languages</p>
+                            <p className="text-xs text-muted">The member can change translations in these languages. Leave all unchecked for read-only access.</p>
                             {Array.from(assignmentDraft.viewLanguages).map((code) => (
                               <label key={code} className="flex items-center gap-2 text-sm">
                                 <input
@@ -893,6 +953,7 @@ export default function UserManagementDialog({
             })}
           </ul>
         </section>
+        </div>
       </DialogContent>
     </Dialog>
   );
