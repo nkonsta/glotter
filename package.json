@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:version": "node scripts/check-version.mjs",
+    "tag:release": "node scripts/tag-release.mjs",
     "test:ai-smoke": "RUN_OPENAI_SMOKE=1 vitest run lib/ai/providers/openai.smoke.test.ts"
   },
   "dependencies": {

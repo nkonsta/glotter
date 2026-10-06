@@ -38,6 +38,35 @@ Environment setup:
   - Screenshots or screen recordings for UI updates.
   - Notes about any DB/schema changes or new environment variables.
 
+## Application Versioning
+- Every PR targeting `main`, including documentation and dependency updates,
+  must increase the application version above the current version on `main`.
+- Run `npm version patch --no-git-tag-version` for fixes and maintenance;
+  use `minor` for new features or `major` for breaking changes. Commit both
+  `package.json` and `package-lock.json`. Do not create a release tag on the
+  PR branch when bumping the version.
+- Fetch `origin/main`, then run `npm run check:version` before submitting or
+  merging a PR. Run `npm test -- scripts/check-version.test.mjs` when changing
+  version enforcement.
+- CI's `Version check` requires a higher semantic version and matching root
+  versions in the lockfile. Build-metadata-only changes do not count.
+- `main` requires PRs, passing `verify` and `Version check` checks, and branches
+  to be up to date. These protections also apply to administrators. If another
+  PR merges first, update from `main` and bump again if the version is no longer
+  higher. Never bypass the checks to merge a duplicate version.
+- The dashboard reads its displayed version from `package.json`; see the
+  README's "Version bumps for pull requests" section for contributor steps.
+- After each merge to `main`, the `Release tag` workflow automatically creates
+  and pushes an annotated tag matching `package.json` (e.g. `1.5.1`, without a
+  `v` prefix) on that exact merged commit. It runs independently of CI so a
+  later merge cannot cancel tagging of an earlier version.
+- Do not manually tag PR commits, move existing release tags, or force-push
+  tags. A rerun skips a tag already on the correct commit and fails if the tag
+  points elsewhere. Diagnose a failed `Release tag` run before retrying it.
+- Run `npm test -- scripts/tag-release.test.mjs` when changing tag automation.
+  `npm run tag:release -- <commit>` creates and pushes a real tag; only use it
+  for an authorized release commit on `main` when recovering a failed run.
+
 ## Configuration & Security Tips
 - Store secrets only in `.env.local`; never commit credentials.
 - Supabase schema expectations live in `db_setup/README.md` and the root `README.md`—keep both updated if tables change.

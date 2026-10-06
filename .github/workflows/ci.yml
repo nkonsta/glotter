@@ -31,7 +31,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npm test -- scripts/check-version.test.mjs
+      - run: npm test -- scripts/check-version.test.mjs scripts/tag-release.test.mjs
 
       - name: Require a version greater than the PR base
         env:

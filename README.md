@@ -225,6 +225,18 @@ branch from `main` and increase the version again if necessary; two PRs cannot
 merge with the same version. The workflow alone does not block merges unless
 the check is required in GitHub's settings.
 
+After each merge, the separate `Release tag` workflow creates and pushes an
+annotated tag on the exact merged commit, using the version as the tag name
+(for example `1.5.1`, matching existing tags without a `v` prefix). It is not
+cancelled by later merges. A rerun skips a tag already on the correct commit
+and fails if that name points elsewhere; release tags are never overwritten.
+This creates a Git tag; it does not publish a GitHub Release or npm package.
+
+Tag automation regression tests run with
+`npm test -- scripts/tag-release.test.mjs`. If recovering a failed tagging
+run, `npm run tag:release -- <merged-commit>` creates and pushes a real tag;
+verify the commit is the intended release on `main` before running it.
+
 ---
 
 ## Deploy on Vercel
