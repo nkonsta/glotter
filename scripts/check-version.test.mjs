@@ -21,7 +21,7 @@ describe('required version bump', () => {
     (version) => expect(() => checkVersionBump({ version: '1.5.0' }, { version }, lockfile(version))).toThrow('must be greater'),
   );
 
-  it.each([undefined, 123, 'latest', '1.5', '01.5.1'])(
+  it.each([undefined, 123, 'latest', '1.5', '01.5.1', ' 1.5.1 ', 'v1.5.1'])(
     'rejects an invalid proposed version: %s',
     (version) => expect(() => checkVersionBump({ version: '1.5.0' }, { version }, lockfile(version))).toThrow('Proposed package.json'),
   );

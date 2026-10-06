@@ -9,8 +9,8 @@ export function checkVersionBump(basePackage, nextPackage, lockfile) {
   const nextVersion = nextPackage?.version;
 
   for (const [label, version] of [['Base', baseVersion], ['Proposed', nextVersion]]) {
-    if (typeof version !== 'string' || !semver.valid(version)) {
-      throw new Error(`${label} package.json must contain a valid semantic version.`);
+    if (typeof version !== 'string' || version !== version.trim() || version.startsWith('v') || !semver.valid(version)) {
+      throw new Error(`${label} package.json must contain a valid semantic version without padding or a v prefix.`);
     }
   }
 

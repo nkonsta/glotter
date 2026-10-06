@@ -7,8 +7,8 @@ export function tagRelease(ref = 'HEAD') {
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
   const commit = git('rev-parse', '--verify', `${ref}^{commit}`);
   const { version } = JSON.parse(git('show', `${commit}:package.json`));
-  if (typeof version !== 'string' || !semver.valid(version)) {
-    throw new Error('The release commit must contain a valid package.json version.');
+  if (typeof version !== 'string' || version !== version.trim() || version.startsWith('v') || !semver.valid(version)) {
+    throw new Error('The release commit must contain a valid package.json version without padding or a v prefix.');
   }
   const tagRef = `refs/tags/${version}`;
   git('check-ref-format', tagRef);

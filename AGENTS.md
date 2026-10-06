@@ -49,7 +49,8 @@ Environment setup:
   merging a PR. Run `npm test -- scripts/check-version.test.mjs` when changing
   version enforcement.
 - CI's `Version check` requires a higher semantic version and matching root
-  versions in the lockfile. Build-metadata-only changes do not count.
+  versions in the lockfile. Versions must not contain whitespace padding or a
+  `v` prefix. Build-metadata-only changes do not count.
 - `main` requires PRs, passing `verify` and `Version check` checks, and branches
   to be up to date. These protections also apply to administrators. If another
   PR merges first, update from `main` and bump again if the version is no longer

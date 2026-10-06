@@ -41,11 +41,11 @@ describe('release tag automation', () => {
 
   afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
-  it('creates an annotated tag and pushes it to the release commit', () => {
-    const commit = commitVersion('1.5.1');
+  it.each(['1.5.1', '1.6.0-rc.1', '1.6.0+build.2'])('creates and pushes an annotated tag for %s', (version) => {
+    const commit = commitVersion(version);
     expect(run().status).toBe(0);
-    expect(git('cat-file', '-t', 'refs/tags/1.5.1')).toBe('tag');
-    expect(git('ls-remote', 'origin', 'refs/tags/1.5.1^{}')).toBe(`${commit}\trefs/tags/1.5.1^{}`);
+    expect(git('cat-file', '-t', `refs/tags/${version}`)).toBe('tag');
+    expect(git('ls-remote', 'origin', `refs/tags/${version}^{}`)).toBe(`${commit}\trefs/tags/${version}^{}`);
   });
 
   it('tags each exact merge even if HEAD has advanced', () => {
@@ -83,8 +83,8 @@ describe('release tag automation', () => {
     expect(git('ls-remote', '--tags', 'origin')).toBe(before);
   });
 
-  it('rejects an invalid package version without creating a tag', () => {
-    commitVersion('latest');
+  it.each(['latest', 'v1.5.1', ' 1.5.1 '])('rejects invalid version %s without creating a tag', (version) => {
+    commitVersion(version);
     const result = run();
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('valid package.json version');

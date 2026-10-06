@@ -209,6 +209,7 @@ Use `minor` for new features or `major` for breaking changes. Commit both
 CI's `Version check` compares the proposed merge result with the PR's base
 commit using semantic version ordering and checks both root lockfile versions.
 Changing only build metadata does not count as a version increase.
+Versions must not contain whitespace padding or a `v` prefix.
 
 To run the same check locally after fetching `origin/main`:
 
