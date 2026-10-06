@@ -1,0 +1,36 @@
+name: Release tag
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Every merge must receive its own tag, even if another merge happens while
+# this run is in progress. Keep this independent of CI's cancellation group.
+jobs:
+  tag:
+    name: Tag merged version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Create the release tag
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          npm run tag:release -- "$RELEASE_SHA"

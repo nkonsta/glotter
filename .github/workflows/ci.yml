@@ -15,6 +15,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version:
+    name: Version check
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      # The default checkout is the proposed merge result, so lockfile/version
+      # conflict resolutions are checked exactly as they would land on main.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test -- scripts/check-version.test.mjs scripts/tag-release.test.mjs
+
+      - name: Require a version greater than the PR base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          npm run check:version -- "$BASE_SHA"
+
   verify:
     runs-on: ubuntu-latest
     steps:

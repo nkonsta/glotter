@@ -1,6 +1,6 @@
 {
   "name": "translation-mgmt",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -9,6 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "check:version": "node scripts/check-version.mjs",
+    "tag:release": "node scripts/tag-release.mjs",
     "test:ai-smoke": "RUN_OPENAI_SMOKE=1 vitest run lib/ai/providers/openai.smoke.test.ts"
   },
   "dependencies": {
@@ -34,6 +36,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "semver": "^7.8.5",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"

@@ -195,6 +195,49 @@ values match in the downloaded JSON and ZIP. Repeat with and without fallback.
 `npm run test:ai-smoke` is an explicit, billable provider smoke test. It loads
 the server-side OpenAI configuration and never runs as part of `npm test`.
 
+### Version bumps for pull requests
+
+Every PR targeting `main`, including documentation and dependency updates,
+must increase the application version. Before merging, run:
+
+```bash
+npm version patch --no-git-tag-version
+```
+
+Use `minor` for new features or `major` for breaking changes. Commit both
+`package.json` and `package-lock.json`. The dashboard displays this version.
+CI's `Version check` compares the proposed merge result with the PR's base
+commit using semantic version ordering and checks both root lockfile versions.
+Changing only build metadata does not count as a version increase.
+Versions must not contain whitespace padding or a `v` prefix.
+
+To run the same check locally after fetching `origin/main`:
+
+```bash
+npm run check:version
+npm test -- scripts/check-version.test.mjs
+```
+
+GitHub branch protection for `main` must require pull requests (zero approvals
+is sufficient), require both `verify` and `Version check`, require branches to
+be up to date before merging, and apply the restrictions to administrators.
+If another PR merges first, update your
+branch from `main` and increase the version again if necessary; two PRs cannot
+merge with the same version. The workflow alone does not block merges unless
+the check is required in GitHub's settings.
+
+After each merge, the separate `Release tag` workflow creates and pushes an
+annotated tag on the exact merged commit, using the version as the tag name
+(for example `1.5.1`, matching existing tags without a `v` prefix). It is not
+cancelled by later merges. A rerun skips a tag already on the correct commit
+and fails if that name points elsewhere; release tags are never overwritten.
+This creates a Git tag; it does not publish a GitHub Release or npm package.
+
+Tag automation regression tests run with
+`npm test -- scripts/tag-release.test.mjs`. If recovering a failed tagging
+run, `npm run tag:release -- <merged-commit>` creates and pushes a real tag;
+verify the commit is the intended release on `main` before running it.
+
 ---
 
 ## Deploy on Vercel
