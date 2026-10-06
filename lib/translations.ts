@@ -89,7 +89,7 @@ export async function getTranslationsGrid(projectId: string, languageCodes?: str
       );
 
       translationsMap[lang.language_code] = {
-        value: translation?.value || null,
+        value: translation?.value ?? null,
         translation_id: translation?.id || '',
         language_id: lang.id
       };
