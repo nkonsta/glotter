@@ -151,7 +151,16 @@ database level by Row-Level Security, not just in the UI.
 
 ### Import / export
 - **Import** per-language JSON to populate values.
-- **Export** all languages as one JSON file, or per-language files.
+- **Export** one selected language as a JSON file, or multiple languages as a ZIP
+  containing one JSON file per language.
+- Choose **Nested JSON** (the default) for existing Ionic catalogs, or **Flat JSON**
+  for React catalogs that use complete dotted keys. The format applies to both
+  individual files and ZIP entries.
+- Nested JSON cannot represent a string key and its child keys together (for
+  example, `settings.sosButton` and `settings.sosButton.back`). Export stops and
+  identifies the collision; choose Flat JSON to keep every key without renaming it.
+- An optional fallback fills missing (`null` or absent) translations. Empty
+  strings remain empty; with no fallback, missing values are omitted.
 
 ### AI fill (optional)
 With an OpenAI key configured, use **AI fill missing…** to draft missing
@@ -168,6 +177,20 @@ npm run typecheck
 npm test
 npm run build
 ```
+
+Import/export regression tests run with `npm test`. To additionally validate
+private local English and French QR Patrol catalogs (1,774 keys each), without
+copying their contents into the repository:
+
+```bash
+GLOTTER_CATALOG_DIR=/path/to/catalogs npm test -- lib/importExport.test.ts
+```
+
+Manual export checks: select Nested JSON and export an ordinary Ionic catalog;
+select a catalog containing both a parent string and child keys and confirm
+nested export reports the collision and keeps the dialog open. Switch to Flat
+JSON and export one language, then multiple languages; confirm dotted keys and
+values match in the downloaded JSON and ZIP. Repeat with and without fallback.
 
 `npm run test:ai-smoke` is an explicit, billable provider smoke test. It loads
 the server-side OpenAI configuration and never runs as part of `npm test`.

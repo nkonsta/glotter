@@ -1,4 +1,14 @@
+import type { TranslationRow } from './supabase';
+
 export type ImportMode = 'add-only' | 'merge' | 'overwrite';
+export type ExportFormat = 'nested' | 'flat';
+
+export class NestedKeyCollisionError extends Error {
+  constructor(public readonly parentKey: string, public readonly childKey: string) {
+    super(`Nested JSON cannot contain both "${parentKey}" and "${childKey}". Choose Flat JSON to preserve every key.`);
+    this.name = 'NestedKeyCollisionError';
+  }
+}
 
 export function flattenJson(input: unknown, prefix = ''): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -23,16 +33,71 @@ export function setNested(target: Record<string, unknown>, dottedKey: string, va
   let cursor: Record<string, unknown> = target;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
-    const current = cursor[part];
-    if (typeof current !== 'object' || current === null) {
-      const next: Record<string, unknown> = {};
-      cursor[part] = next;
+    const exists = Object.prototype.hasOwnProperty.call(cursor, part);
+    const current = exists ? cursor[part] : undefined;
+    if (exists && (typeof current !== 'object' || current === null || Array.isArray(current))) {
+      throw new NestedKeyCollisionError(parts.slice(0, i + 1).join('.'), dottedKey);
+    }
+    if (!exists) {
+      const next: Record<string, unknown> = Object.create(null);
+      Object.defineProperty(cursor, part, { value: next, enumerable: true, writable: true, configurable: true });
       cursor = next;
     } else {
       cursor = current as Record<string, unknown>;
     }
   }
-  cursor[parts[parts.length - 1]] = value as unknown;
+  const leaf = parts[parts.length - 1];
+  const current = Object.prototype.hasOwnProperty.call(cursor, leaf) ? cursor[leaf] : undefined;
+  if (typeof current === 'object' && current !== null && !Array.isArray(current)) {
+    // Find a descendant to make the collision actionable in either insertion order.
+    let childKey = dottedKey;
+    let child: unknown = current;
+    while (typeof child === 'object' && child !== null && !Array.isArray(child)) {
+      const entry = Object.entries(child)[0];
+      if (!entry) break;
+      childKey += `.${entry[0]}`;
+      child = entry[1];
+    }
+    throw new NestedKeyCollisionError(dottedKey, childKey);
+  }
+  Object.defineProperty(cursor, leaf, { value, enumerable: true, writable: true, configurable: true });
+}
+
+/** Shared serializer for individual files and every language inside a ZIP. */
+export function serializeLanguageJson(
+  rows: ReadonlyArray<Pick<TranslationRow, 'key' | 'translations'>>,
+  languageCode: string,
+  format: ExportFormat,
+  fallbackLanguage: string | null = null
+): string {
+  const catalog: Record<string, unknown> = Object.create(null);
+  for (const row of rows) {
+    const targetValue = row.translations[languageCode]?.value ?? null;
+    const fallbackValue = fallbackLanguage ? row.translations[fallbackLanguage]?.value ?? null : null;
+    const value = targetValue ?? fallbackValue;
+    if (value === null) continue;
+    if (format === 'flat') catalog[row.key] = value;
+    else setNested(catalog, row.key, value);
+  }
+  // Retain the existing ASCII-only encoding, including surrogate pairs for emoji.
+  return JSON.stringify(catalog, null, 2).replace(/[\u0080-\uFFFF]/g, (ch) => {
+    return `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`;
+  });
+}
+
+export async function createLanguagesZip(
+  rows: ReadonlyArray<Pick<TranslationRow, 'key' | 'translations'>>,
+  languageCodes: string[],
+  format: ExportFormat,
+  fallbackLanguage: string | null = null
+): Promise<Blob> {
+  const JSZip = (await import('jszip')).default;
+  const zip = new JSZip();
+  for (const code of languageCodes) {
+    zip.file(`${code}.json`, serializeLanguageJson(rows, code, format, fallbackLanguage));
+  }
+  // A collision in any language rejects before an archive can be downloaded.
+  return zip.generateAsync({ type: 'blob' });
 }
 
 export function normalizeLeafValue(value: unknown): string | null {
@@ -114,5 +179,4 @@ export function toKeyToValueMap(input: Record<string, unknown>): Record<string, 
   for (const [k, v] of Object.entries(flat)) out[k] = normalizeLeafValue(v);
   return out;
 }
-
 

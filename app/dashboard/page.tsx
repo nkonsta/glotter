@@ -21,7 +21,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/Dialog';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { DropdownMenuCheckboxItem } from '@/components/ui/DropdownMenu';
-import { ImportMode, toKeyToValueMap, setNested, decodeUnicodeEscapes } from '@/lib/importExport';
+import { ImportMode, ExportFormat, NestedKeyCollisionError, toKeyToValueMap, serializeLanguageJson, createLanguagesZip, decodeUnicodeEscapes } from '@/lib/importExport';
 import { cn } from '@/lib/cn';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -125,6 +125,8 @@ export default function Home() {
   const [exportFallbackLang, setExportFallbackLang] = useState<string>('en');
   const [fallbackMissingCount, setFallbackMissingCount] = useState<number>(0);
   const [exportBusy, setExportBusy] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('nested');
+  const [exportError, setExportError] = useState<string | null>(null);
   // AI translate dialog
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [aiSourceLang, setAiSourceLang] = useState<string>('en');
@@ -503,75 +505,29 @@ export default function Home() {
     return getTranslationsGrid(selectedProject, exportCodes);
   }
 
-  async function exportLanguage(langCode: string, fallbackLang: string) {
-    const rows = await getExportRows([langCode], fallbackLang);
-    const resolvedFallback = fallbackLang === FALLBACK_NONE ? null : fallbackLang;
-    const nested: Record<string, unknown> = {};
-    rows.forEach(row => {
-      const targetValue = row.translations[langCode]?.value ?? null;
-      const fallbackValue = resolvedFallback ? row.translations[resolvedFallback]?.value ?? null : null;
-      const value = targetValue ?? fallbackValue;
-      if (value != null) setNested(nested, row.key, value);
-    });
-
-    // ASCII-only
-    const json = JSON.stringify(nested, null, 2).replace(/[\u0080-\uFFFF]/g, (ch) => {
-      const code = ch.charCodeAt(0).toString(16).padStart(4, '0');
-      return `\\u${code}`;
-    });
-    const blob = new Blob([json], { type: 'application/json' });
+  function downloadExport(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${langCode}-${Date.now()}.json`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
 
-  // removed all-languages JSON export per user request
+  async function exportLanguage(langCode: string, fallbackLang: string, format: ExportFormat) {
+    const rows = await getExportRows([langCode], fallbackLang);
+    const resolvedFallback = fallbackLang === FALLBACK_NONE ? null : fallbackLang;
+    const json = serializeLanguageJson(rows, langCode, format, resolvedFallback);
+    downloadExport(new Blob([json], { type: 'application/json' }), `${langCode}-${Date.now()}.json`);
+  }
 
-  async function exportAllLanguagesZip(selectedCodes: string[], fallbackLang: string) {
-    try {
-      const rows = await getExportRows(selectedCodes, fallbackLang);
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
-      const resolvedFallback = fallbackLang === FALLBACK_NONE ? null : fallbackLang;
-
-      // Precompute fallback map
-      const fbMap: Record<string, string | null> = {};
-      if (resolvedFallback) {
-        rows.forEach(row => { fbMap[row.key] = row.translations[resolvedFallback]?.value ?? null; });
-      }
-
-      for (const code of selectedCodes) {
-        const nested: Record<string, unknown> = {};
-        rows.forEach(row => {
-          const val = row.translations[code]?.value ?? (resolvedFallback ? fbMap[row.key] : null);
-          if (val != null) setNested(nested, row.key, val);
-        });
-        // ASCII-only export: escape non-ASCII to \uXXXX
-        const json = JSON.stringify(nested, null, 2).replace(/[\u0080-\uFFFF]/g, (ch) => {
-          const code = ch.charCodeAt(0).toString(16).padStart(4, '0');
-          return `\\u${code}`;
-        });
-        zip.file(`${code}.json`, json);
-      }
-
-      const blob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-      a.download = `translations-${Date.now()}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      toast({ title: 'Export failed', description: 'Failed to create ZIP export.', variant: 'error' });
-    }
+  async function exportAllLanguagesZip(selectedCodes: string[], fallbackLang: string, format: ExportFormat) {
+    const rows = await getExportRows(selectedCodes, fallbackLang);
+    const resolvedFallback = fallbackLang === FALLBACK_NONE ? null : fallbackLang;
+    const blob = await createLanguagesZip(rows, selectedCodes, format, resolvedFallback);
+    downloadExport(blob, `translations-${Date.now()}.zip`);
   }
 
   function resetImportFileState() {
@@ -899,6 +855,7 @@ export default function Home() {
                     className="gap-2 w-full sm:w-auto justify-center"
                     onClick={() => {
                       // Open Export Languages dialog directly
+                      setExportError(null);
                       setExportSelected(new Set(languages.map(l => l.code))); // preselect all
                       const defaultFallback = languages.find(l => l.code.toLowerCase() === 'en')?.code || languages[0]?.code || '';
                       setExportFallbackLang(defaultFallback);
@@ -1771,13 +1728,45 @@ export default function Home() {
       )}
 
       {/* Export Languages Dialog */}
-      <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
+      <Dialog open={isExportOpen} onOpenChange={(open) => {
+        setIsExportOpen(open);
+        setExportError(null);
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Export languages</DialogTitle>
-            <DialogDescription>Select languages and an optional fallback language.</DialogDescription>
+            <DialogDescription>Select a JSON format, languages, and an optional fallback language.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            <fieldset>
+              <legend className="text-sm font-medium text-muted-foreground mb-1">JSON format</legend>
+              <div className="flex flex-wrap gap-4">
+                {([
+                  ['nested', 'Nested JSON'],
+                  ['flat', 'Flat JSON'],
+                ] as const).map(([format, label]) => (
+                  <label key={format} className="inline-flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="radio"
+                      name="export-format"
+                      value={format}
+                      checked={exportFormat === format}
+                      disabled={exportBusy}
+                      onChange={() => {
+                        setExportFormat(format);
+                        setExportError(null);
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                {exportFormat === 'nested'
+                  ? 'Creates nested objects from dotted keys for Ionic. Conflicting parent and child keys block export.'
+                  : 'Keeps complete dotted keys for React catalogs, including parent and child keys.'}
+              </p>
+            </fieldset>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Fallback language</label>
               <DropdownMenu>
@@ -1857,6 +1846,7 @@ export default function Home() {
                 );
               })}
             </div>
+            {exportError && <p role="alert" className="text-sm text-danger">{exportError}</p>}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsExportOpen(false)} disabled={exportBusy}>Cancel</Button>
               <Button
@@ -1865,16 +1855,20 @@ export default function Home() {
                   if (selected.length === 0) return;
                   try {
                     setExportBusy(true);
+                    setExportError(null);
                     if (selected.length === 1) {
-                      await exportLanguage(selected[0], exportFallbackLang);
+                      await exportLanguage(selected[0], exportFallbackLang, exportFormat);
                     } else {
                       // zip only selected languages
-                      await exportAllLanguagesZip(selected, exportFallbackLang);
+                      await exportAllLanguagesZip(selected, exportFallbackLang, exportFormat);
                     }
                     setIsExportOpen(false);
                   } catch (e) {
-                    console.error(e);
-                    toast({ title: 'Export failed', description: 'Failed to create ZIP export.', variant: 'error' });
+                    // Expected format conflicts belong in the dialog, not Next's error overlay.
+                    if (!(e instanceof NestedKeyCollisionError)) console.error(e);
+                    const message = e instanceof Error ? e.message : 'Failed to create export.';
+                    setExportError(message);
+                    toast({ title: 'Export failed', description: message, variant: 'error' });
                   } finally {
                     setExportBusy(false);
                   }
