@@ -151,6 +151,8 @@ function Dashboard({ user }: { user: User }) {
   // Keyed by project so a membership never applies to a different project while it loads.
   const [loadedMembership, setLoadedMembership] = useState<{ projectId: string; membership: ProjectMembership | null } | null>(null);
   const projectMembership = loadedMembership?.projectId === selectedProject ? loadedMembership.membership : null;
+  // Until the selected project's languages and membership arrive, `languages` still belongs to the previous project.
+  const hasProjectData = loadedMembership?.projectId === selectedProject;
 
   // Import dialog state
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -395,7 +397,7 @@ function Dashboard({ user }: { user: User }) {
   }, [authLoading, selectedProject]);
 
   useEffect(() => {
-    if (!selectedProject) return;
+    if (!selectedProject || !hasProjectData) return;
     if (languages.length === 0) return;
     if (visibleLanguages.size === 0) return;
     let isMounted = true;
@@ -426,10 +428,10 @@ function Dashboard({ user }: { user: User }) {
       isMounted = false;
       setLoadingCount(null);
     };
-  }, [selectedProject, languages, visibleLanguages]);
+  }, [selectedProject, hasProjectData, languages, visibleLanguages]);
 
-  // A project with no languages, or no visible columns, has no translations to wait for.
-  const hasNothingToLoad = Boolean(selectedProject) && (languages.length === 0 || visibleLanguages.size === 0);
+  // Once its data has arrived, a project with no languages or no visible columns has no translations to wait for.
+  const hasNothingToLoad = hasProjectData && (languages.length === 0 || visibleLanguages.size === 0);
   const showLoading = loading && !hasNothingToLoad;
 
   const handleSignOut = useCallback(async () => {
