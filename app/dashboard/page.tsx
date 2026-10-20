@@ -185,6 +185,8 @@ function Dashboard({ user }: { user: User }) {
   // Bulk AI chunking state
   const [aiChunking, setAiChunking] = useState<{ running: boolean; processed: number; total: number } | null>(null);
   const aiCancelRef = useRef<{ cancelled: boolean; controller: AbortController | null }>({ cancelled: false, controller: null });
+  // Mirrors selectedProject (updated in selectProject) so async reloads can tell the user has moved on.
+  const selectedProjectRef = useRef('');
 
   const sortedLanguages = useMemo(() => {
     return [...languages].sort((a, b) => {
@@ -335,10 +337,12 @@ function Dashboard({ user }: { user: User }) {
     try {
       setLoading(true);
       const data = await fetchProjectData(projectId);
+      if (selectedProjectRef.current !== projectId) return;
       setLanguages(data.languages);
       setTranslations([]);
       setLoadedMembership({ projectId, membership: data.membership });
     } catch (err) {
+      if (selectedProjectRef.current !== projectId) return;
       setError('Failed to load project data');
       setLoadedMembership({ projectId, membership: null });
       setLoading(false);
@@ -526,6 +530,7 @@ function Dashboard({ user }: { user: User }) {
   // Switching projects closes project-scoped dialogs, since the user's permissions may differ.
   function selectProject(projectId: string) {
     if (projectId === selectedProject) return;
+    selectedProjectRef.current = projectId;
     setSelectedProject(projectId);
     setLoading(projectId !== '');
     setIsManageLangsOpen(false);
