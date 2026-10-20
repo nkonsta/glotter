@@ -65,6 +65,43 @@ function formatLanguages(codes: string[] | null) {
   return codes.map((code) => code.toUpperCase()).join(', ');
 }
 
+type AccessDirectory = {
+  users: UserRecord[];
+  projects: DirectoryProject[];
+};
+
+class DirectoryRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+async function requestAccessDirectory(accessToken: string): Promise<AccessDirectory> {
+  const response = await fetch('/api/admin/users', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const message = typeof payload.error === 'string' ? payload.error : 'Failed to load users and access.';
+    throw new DirectoryRequestError(message, response.status);
+  }
+
+  const payload = (await response.json()) as {
+    users?: UserRecord[];
+    projects?: DirectoryProject[];
+  };
+  const sortedUsers = (Array.isArray(payload.users) ? payload.users : []).sort((a, b) => {
+    const aLabel = (a.email ?? accountLabel(a)).toLowerCase();
+    const bLabel = (b.email ?? accountLabel(b)).toLowerCase();
+    return aLabel.localeCompare(bLabel);
+  });
+  return {
+    users: sortedUsers,
+    projects: Array.isArray(payload.projects) ? payload.projects : [],
+  };
+}
+
 export default function UserManagementDialog({
   open,
   onOpenChange,
@@ -98,52 +135,41 @@ export default function UserManagementDialog({
   const [recoveryUserId, setRecoveryUserId] = useState('');
   const [recoveringProject, setRecoveringProject] = useState(false);
 
+  const applyDirectory = useCallback((directory: AccessDirectory) => {
+    setUsers(directory.users);
+    setProjects(directory.projects);
+  }, []);
+
+  const handleDirectoryLoadError = useCallback((error: unknown) => {
+    const message = error instanceof Error ? error.message : 'Something went wrong.';
+    if (error instanceof DirectoryRequestError && (error.status === 401 || error.status === 403)) {
+      toast({ title: 'Access denied', description: message, variant: 'error' });
+      onOpenChange(false);
+      return;
+    }
+    console.error('Failed to fetch access directory', error);
+    toast({ title: 'Could not load users and access', description: message, variant: 'error' });
+  }, [toast, onOpenChange]);
+
   const fetchDirectory = useCallback(async () => {
     if (!accessToken) return;
 
     setLoadingDirectory(true);
     try {
-      const response = await fetch('/api/admin/users', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        const message = typeof payload.error === 'string' ? payload.error : 'Failed to load users and access.';
-        if (response.status === 401 || response.status === 403) {
-          toast({ title: 'Access denied', description: message, variant: 'error' });
-          onOpenChange(false);
-          return;
-        }
-        throw new Error(message);
-      }
-
-      const payload = (await response.json()) as {
-        users?: UserRecord[];
-        projects?: DirectoryProject[];
-      };
-      const sortedUsers = (Array.isArray(payload.users) ? payload.users : []).sort((a, b) => {
-        const aLabel = (a.email ?? accountLabel(a)).toLowerCase();
-        const bLabel = (b.email ?? accountLabel(b)).toLowerCase();
-        return aLabel.localeCompare(bLabel);
-      });
-      setUsers(sortedUsers);
-      setProjects(Array.isArray(payload.projects) ? payload.projects : []);
+      applyDirectory(await requestAccessDirectory(accessToken));
     } catch (error) {
-      console.error('Failed to fetch access directory', error);
-      toast({
-        title: 'Could not load users and access',
-        description: error instanceof Error ? error.message : 'Something went wrong.',
-        variant: 'error',
-      });
+      handleDirectoryLoadError(error);
     } finally {
       setLoadingDirectory(false);
     }
-  }, [accessToken, toast, onOpenChange]);
+  }, [accessToken, applyDirectory, handleDirectoryLoadError]);
 
-  useEffect(() => {
-    if (open) {
-      void fetchDirectory();
+  // Reset the dialog whenever it opens or closes, during render rather than in an effect.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open && accessToken) {
+      setLoadingDirectory(true);
     }
     setSearchQuery('');
     setShowCreateUser(false);
@@ -158,7 +184,28 @@ export default function UserManagementDialog({
     setConfirmRemoveAssignmentId(null);
     setRecoveryProjectId(null);
     setRecoveryUserId('');
-  }, [open, fetchDirectory]);
+  }
+
+  useEffect(() => {
+    if (!open || !accessToken) return;
+    let isCurrent = true;
+
+    const loadDirectory = async () => {
+      try {
+        const directory = await requestAccessDirectory(accessToken);
+        if (isCurrent) applyDirectory(directory);
+      } catch (error) {
+        if (isCurrent) handleDirectoryLoadError(error);
+      } finally {
+        if (isCurrent) setLoadingDirectory(false);
+      }
+    };
+
+    void loadDirectory();
+    return () => {
+      isCurrent = false;
+    };
+  }, [open, accessToken, applyDirectory, handleDirectoryLoadError]);
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
 

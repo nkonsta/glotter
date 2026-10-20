@@ -62,6 +62,29 @@ function languageLabel(code: string, name: string | null | undefined) {
   return name ? `${upper} (${name})` : upper;
 }
 
+class MembersRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+async function requestProjectMembers(projectId: string, accessToken: string): Promise<MemberRecord[]> {
+  const response = await fetch(`/api/admin/project-members?projectId=${encodeURIComponent(projectId)}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => ({}));
+    const message = typeof errorPayload.error === 'string' ? errorPayload.error : 'Failed to load members.';
+    throw new MembersRequestError(message, response.status);
+  }
+
+  const payload = (await response.json()) as { members?: MemberRecord[] };
+  return Array.isArray(payload.members) ? payload.members.map(normalizeMember) : [];
+}
+
 export default function ManageProjectMembersDialog({
   open,
   onOpenChange,
@@ -155,6 +178,18 @@ export default function ManageProjectMembersDialog({
     [languagesByCode]
   );
 
+  const handleMembersLoadError = useCallback((error: unknown) => {
+    const message = error instanceof Error ? error.message : 'Something went wrong while loading members.';
+    if (error instanceof MembersRequestError && (error.status === 401 || error.status === 403)) {
+      toast({ title: 'Access denied', description: message, variant: 'error' });
+      onOpenChange(false);
+      return;
+    }
+    console.error('Failed to fetch project members', error);
+    toast({ title: 'Could not load members', description: message, variant: 'error' });
+    setMembers([]);
+  }, [toast, onOpenChange]);
+
   const fetchMembers = useCallback(async () => {
     if (!projectId || !accessToken) {
       setMembers([]);
@@ -163,40 +198,13 @@ export default function ManageProjectMembersDialog({
 
     setLoadingMembers(true);
     try {
-      const response = await fetch(`/api/admin/project-members?projectId=${encodeURIComponent(projectId)}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => ({}));
-        const message = typeof errorPayload.error === 'string' ? errorPayload.error : 'Failed to load members.';
-
-        if (response.status === 401 || response.status === 403) {
-          toast({ title: 'Access denied', description: message, variant: 'error' });
-          onOpenChange(false);
-          return;
-        }
-
-        throw new Error(message);
-      }
-
-      const payload = (await response.json()) as { members?: MemberRecord[] };
-      const nextMembers = Array.isArray(payload.members) ? payload.members.map(normalizeMember) : [];
-      setMembers(nextMembers);
+      setMembers(await requestProjectMembers(projectId, accessToken));
     } catch (error) {
-      console.error('Failed to fetch project members', error);
-      toast({
-        title: 'Could not load members',
-        description: error instanceof Error ? error.message : 'Something went wrong while loading members.',
-        variant: 'error',
-      });
-      setMembers([]);
+      handleMembersLoadError(error);
     } finally {
       setLoadingMembers(false);
     }
-  }, [projectId, accessToken, toast, onOpenChange]);
+  }, [projectId, accessToken, handleMembersLoadError]);
 
   const findAccount = useCallback(async () => {
     if (!projectId || !accessToken || !accountEmail.trim()) return;
@@ -242,24 +250,47 @@ export default function ManageProjectMembersDialog({
     }
   }, [projectId, accessToken, accountEmail, toast, onOpenChange]);
 
-  useEffect(() => {
+  // Reset the form whenever the dialog opens or closes, during render rather than in an effect.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    setAccountEmail('');
+    setSelectedAccount(null);
+    setRole('member');
+    setViewSelection(defaultViewSeed());
+    setEditSelection(new Set());
     if (open) {
-      void fetchMembers();
-      setAccountEmail('');
-      setSelectedAccount(null);
-      setRole('member');
-      setViewSelection(defaultViewSeed());
-      setEditSelection(new Set());
+      if (projectId && accessToken) {
+        setLoadingMembers(true);
+      } else {
+        setMembers([]);
+      }
     } else {
-      setAccountEmail('');
-      setSelectedAccount(null);
-      setRole('member');
-      setViewSelection(defaultViewSeed());
-      setEditSelection(new Set());
       setEditingMember(null);
       setConfirmRemoveMemberId(null);
     }
-  }, [open, fetchMembers, defaultViewSeed]);
+  }
+
+  useEffect(() => {
+    if (!open || !projectId || !accessToken) return;
+    let isCurrent = true;
+
+    const loadMembers = async () => {
+      try {
+        const nextMembers = await requestProjectMembers(projectId, accessToken);
+        if (isCurrent) setMembers(nextMembers);
+      } catch (error) {
+        if (isCurrent) handleMembersLoadError(error);
+      } finally {
+        if (isCurrent) setLoadingMembers(false);
+      }
+    };
+
+    void loadMembers();
+    return () => {
+      isCurrent = false;
+    };
+  }, [open, projectId, accessToken, handleMembersLoadError]);
 
   const toggleViewLanguage = useCallback((code: string) => {
     setViewSelection((prev) => {

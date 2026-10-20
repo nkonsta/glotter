@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Check, Eye, EyeOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
@@ -25,9 +25,13 @@ export default function ChangePasswordDialog({ open, onOpenChange, currentDispla
   const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState('');
 
-  useEffect(() => {
+  const [syncedDisplayName, setSyncedDisplayName] = useState(currentDisplayName);
+
+  // Pick up display-name changes from the session (e.g. after saving) during render rather than in an effect.
+  if (currentDisplayName !== syncedDisplayName) {
+    setSyncedDisplayName(currentDisplayName);
     setDisplayName(currentDisplayName ?? '');
-  }, [currentDisplayName]);
+  }
 
   const handleClose = (nextOpen: boolean) => {
     if (!nextOpen) {
