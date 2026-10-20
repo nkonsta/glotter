@@ -32,6 +32,7 @@ import { Upload, Download, WandSparkles } from 'lucide-react';
 import AuthScreen from '@/components/auth/AuthScreen';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { supabase } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
 import type { AiSuggestedTranslation } from '@/lib/ai/types';
 import { chunkAiEntries, chunkAiTargetLanguages } from '@/lib/ai/limits';
 import {
@@ -42,6 +43,39 @@ import {
 } from '@/lib/ai/client';
 
 const FALLBACK_NONE = '__none__';
+const VISIBLE_KEY_PREFIX = 'glotter-visible-langs-';
+
+function readSavedVisibleLanguages(projectId: string): string[] {
+  try {
+    const saved = typeof window !== 'undefined'
+      ? window.localStorage.getItem(VISIBLE_KEY_PREFIX + projectId)
+      : null;
+    if (!saved) return [];
+    const parsed = JSON.parse(saved) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((code): code is string => typeof code === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchProjectData(projectId: string): Promise<{ languages: Language[]; membership: ProjectMembership | null }> {
+  const [langs, membership] = await Promise.all([
+    getProjectLanguages(projectId),
+    getProjectMembership(projectId)
+  ]);
+  return {
+    languages: langs.map(l => ({ code: l.language_code, name: l.language_name })),
+    membership,
+  };
+}
+
+function hasLanguageColumn(rows: TranslationRow[], langCode: string): boolean {
+  return rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0].translations, langCode);
+}
+
+function countMissingValues(rows: TranslationRow[], langCode: string): number {
+  return rows.reduce((acc, row) => acc + ((row.translations[langCode]?.value ?? null) == null ? 1 : 0), 0);
+}
 
 interface Project {
   id: string;
@@ -64,13 +98,23 @@ function isImportArrayRecord(value: unknown): value is ImportArrayRecord {
 }
 
 export default function Home() {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  // Keyed by user so all per-user dashboard state resets when the account changes.
+  return <Dashboard key={user.id} user={user} />;
+}
+
+function Dashboard({ user }: { user: User }) {
   const { toast } = useToast();
-  const { user, session, loading: authLoading, signOut: signOutUser } = useAuth();
+  const { session, loading: authLoading, signOut: signOutUser } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [languages, setLanguages] = useState<Language[]>([]);
   const [translations, setTranslations] = useState<TranslationRow[]>([]);
-  const [filteredTranslations, setFilteredTranslations] = useState<TranslationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingCount, setLoadingCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,11 +125,11 @@ export default function Home() {
   const [newKeyName, setNewKeyName] = useState('');
   const [creatingKey, setCreatingKey] = useState(false);
   const [liveMessage, setLiveMessage] = useState('');
-  const [visibleLanguages, setVisibleLanguages] = useState<Set<string>>(new Set());
+  // The user's explicit column choice for a project; until they make one, the saved choice or a default is used.
+  const [visibleLanguageChoice, setVisibleLanguageChoice] = useState<{ projectId: string; codes: Set<string> } | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelKeyIndex, setPanelKeyIndex] = useState<number | null>(null);
   const [columnsSearch, setColumnsSearch] = useState('');
-  const VISIBLE_KEY_PREFIX = 'glotter-visible-langs-';
   // Project & language dialogs
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -104,7 +148,11 @@ export default function Home() {
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
-  const [projectMembership, setProjectMembership] = useState<ProjectMembership | null>(null);
+  // Keyed by project so a membership never applies to a different project while it loads.
+  const [loadedMembership, setLoadedMembership] = useState<{ projectId: string; membership: ProjectMembership | null } | null>(null);
+  const projectMembership = loadedMembership?.projectId === selectedProject ? loadedMembership.membership : null;
+  // Until the selected project's languages and membership arrive, `languages` still belongs to the previous project.
+  const hasProjectData = loadedMembership?.projectId === selectedProject;
 
   // Import dialog state
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -123,7 +171,7 @@ export default function Home() {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [exportSelected, setExportSelected] = useState<Set<string>>(new Set());
   const [exportFallbackLang, setExportFallbackLang] = useState<string>('en');
-  const [fallbackMissingCount, setFallbackMissingCount] = useState<number>(0);
+  const [fetchedFallbackMissing, setFetchedFallbackMissing] = useState<{ projectId: string; langCode: string; count: number } | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('nested');
   const [exportError, setExportError] = useState<string | null>(null);
@@ -137,6 +185,8 @@ export default function Home() {
   // Bulk AI chunking state
   const [aiChunking, setAiChunking] = useState<{ running: boolean; processed: number; total: number } | null>(null);
   const aiCancelRef = useRef<{ cancelled: boolean; controller: AbortController | null }>({ cancelled: false, controller: null });
+  // Mirrors selectedProject (updated in selectProject) so async reloads can tell the user has moved on.
+  const selectedProjectRef = useRef('');
 
   const sortedLanguages = useMemo(() => {
     return [...languages].sort((a, b) => {
@@ -177,8 +227,22 @@ export default function Home() {
     return editable;
   }, [isPlatformAdmin, isOwner, projectMembership, languageCodeSet]);
 
-  const persistVisibleLanguages = useCallback((next: Set<string>) => {
+  const visibleLanguages = useMemo(() => {
+    if (!selectedProject) return new Set<string>();
+    const allowedCodes = Array.from(allowedViewSet);
+    if (allowedCodes.length === 0) return new Set<string>();
+
+    if (visibleLanguageChoice?.projectId === selectedProject) {
+      return new Set(Array.from(visibleLanguageChoice.codes).filter(code => allowedViewSet.has(code)));
+    }
+
+    const saved = readSavedVisibleLanguages(selectedProject).filter(code => allowedViewSet.has(code));
+    return new Set(saved.length > 0 ? saved : allowedCodes.slice(0, 2));
+  }, [allowedViewSet, selectedProject, visibleLanguageChoice]);
+
+  const chooseVisibleLanguages = (next: Set<string>) => {
     if (!selectedProject) return;
+    setVisibleLanguageChoice({ projectId: selectedProject, codes: next });
     try {
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(
@@ -187,7 +251,7 @@ export default function Home() {
         );
       }
     } catch {}
-  }, [selectedProject]);
+  };
 
   const gridLanguages = useMemo(
     () =>
@@ -210,7 +274,7 @@ export default function Home() {
   const canManageKeys = isPlatformAdmin || isOwner;
   const canAddKey = isPlatformAdmin || isOwner;
   const hasProjectActions = canManageMembers || canManageLanguages || canDeleteProject;
-  const applyFilters = useCallback(() => {
+  const filteredTranslations = useMemo(() => {
     let filtered = translations;
 
     // Apply search filter
@@ -237,29 +301,12 @@ export default function Home() {
       );
     }
 
-    setFilteredTranslations(filtered);
+    return filtered;
   }, [translations, searchQuery, filterMode, visibleLanguages, allowedViewSet]);
 
   useEffect(() => {
-    applyFilters();
-  }, [applyFilters]);
-
-  useEffect(() => {
+    if (authLoading) return;
     let isMounted = true;
-
-    if (authLoading) {
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    if (!user) {
-      setIsPlatformAdmin(false);
-      setIsManageMembersOpen(false);
-      return () => {
-        isMounted = false;
-      };
-    }
 
     const fetchPlatformRole = async () => {
       try {
@@ -283,119 +330,21 @@ export default function Home() {
     return () => {
       isMounted = false;
     };
-  }, [user, authLoading]);
+  }, [authLoading]);
 
-  useEffect(() => {
-    if (!selectedProject) return;
-    const allowedCodes = Array.from(allowedViewSet);
-    if (allowedCodes.length === 0) {
-      const cleared = new Set<string>();
-      setVisibleLanguages(cleared);
-      persistVisibleLanguages(cleared);
-      return;
-    }
-
-    try {
-      const saved = typeof window !== 'undefined'
-        ? window.localStorage.getItem(VISIBLE_KEY_PREFIX + selectedProject)
-        : null;
-      let codes: string[] | null = null;
-      if (saved) {
-        const parsed = JSON.parse(saved) as string[];
-        if (Array.isArray(parsed)) codes = parsed;
-      }
-
-      const filtered = codes && codes.length > 0
-        ? codes.filter(code => allowedViewSet.has(code))
-        : [];
-
-      const fallback = allowedCodes.slice(0, Math.min(allowedCodes.length, 2));
-      const initialCodes = filtered.length > 0 ? filtered : fallback;
-      const initial = new Set(initialCodes.length > 0 ? initialCodes : [allowedCodes[0]]);
-      setVisibleLanguages(initial);
-      persistVisibleLanguages(initial);
-    } catch {
-      const fallback = new Set(allowedCodes.slice(0, Math.min(allowedCodes.length, 2)));
-      if (fallback.size === 0 && allowedCodes[0]) {
-        fallback.add(allowedCodes[0]);
-      }
-      setVisibleLanguages(fallback);
-      persistVisibleLanguages(fallback);
-    }
-  }, [allowedViewSet, persistVisibleLanguages, selectedProject]);
-
-  useEffect(() => {
-    if (!canManageLanguages) {
-      setIsManageLangsOpen(false);
-    }
-  }, [canManageLanguages]);
-
-  useEffect(() => {
-    if (!canDeleteProject) {
-      setIsDeleteProjectOpen(false);
-    }
-  }, [canDeleteProject]);
-
-  useEffect(() => {
-    if (!canAddKey) {
-      setIsAddKeyOpen(false);
-    }
-  }, [canAddKey]);
-
-  useEffect(() => {
-    if (!canManageMembers) {
-      setIsManageMembersOpen(false);
-    }
-  }, [canManageMembers]);
-
-  useEffect(() => {
-    if (!canUseAi) {
-      setIsAiOpen(false);
-      setAiPreview(null);
-      setAiBusy(false);
-      setAiGlossaryCsv('');
-      setAiTargets(new Set());
-      setAiChunking(null);
-      aiCancelRef.current = { cancelled: false, controller: null };
-    }
-  }, [canUseAi]);
-
-  useEffect(() => {
-    if (!canImportData) {
-      setIsImportOpen(false);
-      resetImportFileState();
-    }
-  }, [canImportData]);
-
-  // duplicate applyFilters removed (now defined via useCallback above)
-
-  const loadProjects = useCallback(async () => {
-    try {
-      const data = await getProjects();
-      setProjects(data);
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to load projects. Check your Supabase configuration.');
-      setLoading(false);
-      console.error(err);
-    }
-  }, []);
-
+  // Reloads the selected project's languages and membership after an edit.
   const loadProjectData = useCallback(async (projectId: string) => {
     try {
       setLoading(true);
-      const [langs, membership] = await Promise.all([
-        getProjectLanguages(projectId),
-        getProjectMembership(projectId)
-      ]);
-
-      setLanguages(langs.map(l => ({ code: l.language_code, name: l.language_name })));
+      const data = await fetchProjectData(projectId);
+      if (selectedProjectRef.current !== projectId) return;
+      setLanguages(data.languages);
       setTranslations([]);
-      setFilteredTranslations([]);
-      setProjectMembership(membership);
+      setLoadedMembership({ projectId, membership: data.membership });
     } catch (err) {
+      if (selectedProjectRef.current !== projectId) return;
       setError('Failed to load project data');
-      setProjectMembership(null);
+      setLoadedMembership({ projectId, membership: null });
       setLoading(false);
       console.error(err);
     }
@@ -403,32 +352,56 @@ export default function Home() {
 
   useEffect(() => {
     if (authLoading) return;
+    let isMounted = true;
 
-    if (!user) {
-      setProjects([]);
-      setLanguages([]);
-      setTranslations([]);
-      setFilteredTranslations([]);
-      setSelectedProject('');
-      setProjectMembership(null);
-      setVisibleLanguages(new Set());
-      setLoading(false);
-      return;
-    }
+    const loadProjects = async () => {
+      try {
+        const data = await getProjects();
+        if (!isMounted) return;
+        setProjects(data);
+        setLoading(false);
+      } catch (err) {
+        if (!isMounted) return;
+        setError('Failed to load projects. Check your Supabase configuration.');
+        setLoading(false);
+        console.error(err);
+      }
+    };
 
-    setError(null);
-    setLoading(true);
-    loadProjects();
-  }, [authLoading, user, loadProjects]);
-
-  useEffect(() => {
-    if (authLoading || !user || !selectedProject) return;
-    setProjectMembership(null);
-    loadProjectData(selectedProject);
-  }, [authLoading, user, selectedProject, loadProjectData]);
+    void loadProjects();
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading]);
 
   useEffect(() => {
-    if (!selectedProject) return;
+    if (authLoading || !selectedProject) return;
+    let isMounted = true;
+
+    const loadSelectedProject = async () => {
+      try {
+        const data = await fetchProjectData(selectedProject);
+        if (!isMounted) return;
+        setLanguages(data.languages);
+        setTranslations([]);
+        setLoadedMembership({ projectId: selectedProject, membership: data.membership });
+      } catch (err) {
+        if (!isMounted) return;
+        setError('Failed to load project data');
+        setLoadedMembership({ projectId: selectedProject, membership: null });
+        setLoading(false);
+        console.error(err);
+      }
+    };
+
+    void loadSelectedProject();
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, selectedProject]);
+
+  useEffect(() => {
+    if (!selectedProject || !hasProjectData) return;
     if (languages.length === 0) return;
     if (visibleLanguages.size === 0) return;
     let isMounted = true;
@@ -459,25 +432,11 @@ export default function Home() {
       isMounted = false;
       setLoadingCount(null);
     };
-  }, [selectedProject, languages, visibleLanguages]);
+  }, [selectedProject, hasProjectData, languages, visibleLanguages]);
 
-  useEffect(() => {
-    if (!selectedProject) {
-      setProjectMembership(null);
-    }
-  }, [selectedProject]);
-
-  useEffect(() => {
-    if (!selectedProject) return;
-    if (languages.length === 0) {
-      setLoading(false);
-      return;
-    }
-    if (visibleLanguages.size > 0) return;
-    if (allowedViewSet.size === 0) {
-      setLoading(false);
-    }
-  }, [selectedProject, languages, visibleLanguages, allowedViewSet]);
+  // Once its data has arrived, a project with no languages or no visible columns has no translations to wait for.
+  const hasNothingToLoad = hasProjectData && (languages.length === 0 || visibleLanguages.size === 0);
+  const showLoading = loading && !hasNothingToLoad;
 
   const handleSignOut = useCallback(async () => {
     try {
@@ -544,47 +503,57 @@ export default function Home() {
     setPanelOpen(true);
   }
 
-  const updateFallbackMissingCount = useCallback(async (langCode: string) => {
-    if (langCode === FALLBACK_NONE) {
-      setFallbackMissingCount(0);
-      return;
+  // Counted from the loaded grid when it has the fallback column; otherwise from a one-off fetch.
+  const fallbackMissingCount = useMemo(() => {
+    if (exportFallbackLang === FALLBACK_NONE || !selectedProject) return 0;
+    if (hasLanguageColumn(translations, exportFallbackLang)) {
+      return countMissingValues(translations, exportFallbackLang);
     }
-    if (!selectedProject) {
-      setFallbackMissingCount(0);
-      return;
-    }
-    const hasLang = translations.length > 0
-      && Object.prototype.hasOwnProperty.call(translations[0].translations, langCode);
-    let rows = translations;
-    if (!hasLang) {
-      try {
-        rows = await getTranslationsGrid(selectedProject, [langCode]);
-      } catch (err) {
-        console.error(err);
-        setFallbackMissingCount(0);
-        return;
-      }
-    }
-    const missing = rows.reduce((acc, row) => acc + ((row.translations[langCode]?.value ?? null) == null ? 1 : 0), 0);
-    setFallbackMissingCount(missing);
-  }, [selectedProject, translations]);
+    return fetchedFallbackMissing?.projectId === selectedProject && fetchedFallbackMissing.langCode === exportFallbackLang
+      ? fetchedFallbackMissing.count
+      : 0;
+  }, [exportFallbackLang, fetchedFallbackMissing, selectedProject, translations]);
 
-  useEffect(() => {
-    if (!isExportOpen) return;
-    void updateFallbackMissingCount(exportFallbackLang);
-  }, [isExportOpen, exportFallbackLang, updateFallbackMissingCount]);
+  async function chooseExportFallback(langCode: string) {
+    setExportFallbackLang(langCode);
+    if (langCode === FALLBACK_NONE || !selectedProject || hasLanguageColumn(translations, langCode)) return;
+    const projectId = selectedProject;
+    try {
+      const rows = await getTranslationsGrid(projectId, [langCode]);
+      setFetchedFallbackMissing({ projectId, langCode, count: countMissingValues(rows, langCode) });
+    } catch (err) {
+      console.error(err);
+      setFetchedFallbackMissing({ projectId, langCode, count: 0 });
+    }
+  }
+
+  // Switching projects closes project-scoped dialogs, since the user's permissions may differ.
+  function selectProject(projectId: string) {
+    if (projectId === selectedProject) return;
+    selectedProjectRef.current = projectId;
+    setSelectedProject(projectId);
+    setLoading(projectId !== '');
+    setIsManageLangsOpen(false);
+    setIsDeleteProjectOpen(false);
+    setIsAddKeyOpen(false);
+    setIsManageMembersOpen(false);
+    setIsAiOpen(false);
+    setAiPreview(null);
+    setAiBusy(false);
+    setAiGlossaryCsv('');
+    setAiTargets(new Set());
+    setAiChunking(null);
+    aiCancelRef.current = { cancelled: false, controller: null };
+    setIsImportOpen(false);
+    resetImportFileState();
+  }
 
   function handleDeletedKeys(keyIds: string[]) {
     if (!keyIds || keyIds.length === 0) return;
     setTranslations(prev => prev.filter(r => !keyIds.includes(r.key_id)));
-    setFilteredTranslations(prev => prev.filter(r => !keyIds.includes(r.key_id)));
     const msg = `${keyIds.length} key${keyIds.length > 1 ? 's' : ''} deleted`;
     setLiveMessage(msg);
     toast({ title: 'Deleted', description: msg, variant: 'success' });
-  }
-
-  if (!user) {
-    return <AuthScreen />;
   }
 
   if (error) {
@@ -642,7 +611,7 @@ export default function Home() {
                     {projects.map((project) => (
                       <DropdownMenuItem
                         key={project.id}
-                        onClick={() => setSelectedProject(project.id)}
+                        onClick={() => selectProject(project.id)}
                         className={cn(
                           project.id === selectedProject
                             ? "bg-primary-soft text-foreground font-medium"
@@ -722,7 +691,7 @@ export default function Home() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         <div aria-live="polite" aria-atomic="true" className="sr-only">{liveMessage}</div>
-        {loading ? (
+        {showLoading ? (
           <div className="space-y-4">
             <div className="bg-surface-elevated px-4 sm:px-6 py-6 rounded-xl shadow-card border border-border">
               <div className="flex items-center justify-between mb-6">
@@ -858,9 +827,7 @@ export default function Home() {
                       setExportError(null);
                       setExportSelected(new Set(languages.map(l => l.code))); // preselect all
                       const defaultFallback = languages.find(l => l.code.toLowerCase() === 'en')?.code || languages[0]?.code || '';
-                      setExportFallbackLang(defaultFallback);
-                      const missing = translations.reduce((acc, row) => acc + ((row.translations[defaultFallback]?.value ?? null) == null ? 1 : 0), 0);
-                      setFallbackMissingCount(missing);
+                      void chooseExportFallback(defaultFallback);
                       setIsExportOpen(true);
                     }}
                   >
@@ -985,8 +952,7 @@ export default function Home() {
                             size="sm"
                             onClick={() => {
                               const all = new Set(Array.from(allowedViewSet));
-                              setVisibleLanguages(all);
-                              persistVisibleLanguages(all);
+                              chooseVisibleLanguages(all);
                             }}
                           >
                             Select all
@@ -996,8 +962,7 @@ export default function Home() {
                             size="sm"
                             onClick={() => {
                               const none = new Set<string>();
-                              setVisibleLanguages(none);
-                              persistVisibleLanguages(none);
+                              chooseVisibleLanguages(none);
                             }}
                           >
                             Select none
@@ -1027,8 +992,7 @@ export default function Home() {
                                       newVisible.add(lang.code);
                                     }
                                   }
-                                  setVisibleLanguages(newVisible);
-                                  persistVisibleLanguages(newVisible);
+                                  chooseVisibleLanguages(newVisible);
                                 }}
                               >
                                 <span className="text-sm font-medium">{lang.code.toUpperCase()}</span>
@@ -1163,7 +1127,7 @@ export default function Home() {
                       });
                     const project = await createProject(newProjectName.trim(), langs);
                     setProjects(prev => [...prev, project]);
-                    setSelectedProject(project.id);
+                    selectProject(project.id);
                     setIsCreateProjectOpen(false);
                     setNewProjectName('');
                     setInitialLangs('en');
@@ -1701,11 +1665,9 @@ export default function Home() {
                     // Refresh projects list
                     const refreshed = await getProjects();
                     setProjects(refreshed);
-                    setSelectedProject('');
-                    setProjectMembership(null);
+                    selectProject('');
                     setLanguages([]);
                     setTranslations([]);
-                    setFilteredTranslations([]);
                     setIsDeleteProjectOpen(false);
                     setConfirmProjectName('');
                     toast({ title: 'Project deleted', description: `${proj.name} deleted`, variant: 'success' });
@@ -1785,8 +1747,7 @@ export default function Home() {
                 <DropdownMenuContent align="end" className="max-h-64 overflow-auto w-64">
                   <DropdownMenuItem
                     onClick={() => {
-                      setExportFallbackLang(FALLBACK_NONE);
-                      setFallbackMissingCount(0);
+                      void chooseExportFallback(FALLBACK_NONE);
                     }}
                   >
                     <span className="font-medium">No fallback</span>
@@ -1794,8 +1755,7 @@ export default function Home() {
                   </DropdownMenuItem>
                   {sortedLanguages.map(l => (
                     <DropdownMenuItem key={l.code} onClick={() => {
-                      setExportFallbackLang(l.code);
-                      void updateFallbackMissingCount(l.code);
+                      void chooseExportFallback(l.code);
                     }}>
                       <span className="font-medium">{l.code.toUpperCase()}</span>
                       {l.name && <span className="text-xs text-muted ml-2">({l.name})</span>}

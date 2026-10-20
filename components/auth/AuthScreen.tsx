@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AuthError } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/Button";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -28,9 +28,10 @@ export default function AuthScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  function changeMode(nextMode: AuthMode) {
+    setMode(nextMode);
     setSuccessMessage(null);
-  }, [mode]);
+  }
 
   const canSubmit = useMemo(() => {
     if (!email.trim()) return false;
@@ -195,7 +196,7 @@ export default function AuthScreen() {
               <button
                 type="button"
                 className="text-[hsl(var(--accent))] font-medium hover:underline"
-                onClick={() => setMode("reset")}
+                onClick={() => changeMode("reset")}
               >
                 Forgot password?
               </button>
@@ -204,7 +205,7 @@ export default function AuthScreen() {
                 <button
                   type="button"
                   className="text-[hsl(var(--accent))] font-medium hover:underline"
-                  onClick={() => setMode("sign-up")}
+                  onClick={() => changeMode("sign-up")}
                 >
                   Create one
                 </button>
@@ -217,7 +218,7 @@ export default function AuthScreen() {
               <button
                 type="button"
                 className="text-[hsl(var(--accent))] font-medium hover:underline"
-                onClick={() => setMode("sign-in")}
+                onClick={() => changeMode("sign-in")}
               >
                 Sign in
               </button>
@@ -229,7 +230,7 @@ export default function AuthScreen() {
               <button
                 type="button"
                 className="text-[hsl(var(--accent))] font-medium hover:underline"
-                onClick={() => setMode("sign-in")}
+                onClick={() => changeMode("sign-in")}
               >
                 Return to sign in
               </button>
