@@ -125,6 +125,7 @@ See README.md lines 116-159 for full schema SQL.
 ✅ Modern SaaS UI with minimal borders and refined interactions
 ✅ Sticky table header and first column (checkbox + key)
 ✅ Hover actions (edit/copy icons appear on row hover)
+✅ Read-only v1 API (`/api/v1/projects`, `/languages`, `/export`) with project-scoped API keys
 
 ### Not Yet Implemented
 

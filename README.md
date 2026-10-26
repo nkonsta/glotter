@@ -162,6 +162,49 @@ database level by Row-Level Security, not just in the UI.
 - An optional fallback fills missing (`null` or absent) translations. Empty
   strings remain empty; with no fallback, missing values are omitted.
 
+### Export API (CI, build scripts, apps)
+Receivers can download translations themselves instead of waiting for a manual
+export. Project owners create read-only keys under **API keys…** in the project
+menu. Each key works for one project, is shown once, and can be revoked at any
+time. Requires the [`tms_project_api_keys.sql`](./db_setup/patches/tms_project_api_keys.sql)
+patch on existing databases.
+
+```bash
+# Projects you can read → {"projects":[{"id":"…","name":"Mobile app"}]}
+curl -H "Authorization: Bearer $GLOTTER_API_KEY" \
+  "https://<your-glotter>/api/v1/projects"
+
+# A project's active languages → {"languages":[{"code":"en","name":"English"}]}
+curl -H "Authorization: Bearer $GLOTTER_API_KEY" \
+  "https://<your-glotter>/api/v1/projects/<project-id>/languages"
+
+# One language as JSON
+curl -H "Authorization: Bearer $GLOTTER_API_KEY" \
+  "https://<your-glotter>/api/v1/projects/<project-id>/export?languages=en" -o en.json
+
+# Every active language as a ZIP (one <code>.json per language)
+curl -H "Authorization: Bearer $GLOTTER_API_KEY" \
+  "https://<your-glotter>/api/v1/projects/<project-id>/export" -o translations.zip
+```
+
+A project API key lists only its own project. With a session token, platform
+admins see every project and other users see their memberships; members see only
+the languages they can view. Language codes match the export parameters below.
+
+Export query parameters:
+
+| Query parameter | Values | Default |
+| --- | --- | --- |
+| `languages` | Comma-separated codes, e.g. `en,fr` | Every active language |
+| `format` | `nested` or `flat` | `nested` |
+| `fallback` | A language code used for missing values | None (missing values omitted) |
+| `type` | `json` (exactly one language) or `zip` | `json` for one requested language, otherwise `zip` |
+
+Every response carries an `ETag`. Send it back as `If-None-Match` to receive
+`304 Not Modified` when nothing changed, so scheduled jobs can poll cheaply.
+A signed-in user's Supabase access token also works as the bearer token; members
+can then export only the languages they are allowed to view.
+
 ### AI fill (optional)
 With an OpenAI key configured, use **AI fill missing…** to draft missing
 translations across languages, then review inline before saving. Source strings
@@ -266,6 +309,9 @@ expose an instance publicly:
 - **Restrict sign-ups** if you want a closed instance — disable public sign-ups
   and provision users from the in-app **Manage users** screen.
 - **Keep `SUPABASE_SERVICE_ROLE_KEY` secret** — it's server-only and bypasses RLS.
+- **Treat project API keys like passwords.** Store them in your CI or app secret
+  store, give each consumer its own key, and revoke unused keys. Only SHA-256
+  hashes are kept in the database.
 - Your Supabase **URL and anon key are public by design** (they ship in the client
   bundle); RLS is what protects your data, so don't disable it.
 
@@ -303,7 +349,8 @@ glotter/
 │   │   └── page.tsx             # Main translation app
 │   └── api/                     # Server routes (use the service role)
 │       ├── translations/        # save, bulk-save
-│       ├── admin/               # users, project-members
+│       ├── admin/               # users, project-members, project-api-keys
+│       ├── v1/                  # Versioned read-only API (projects, languages, export)
 │       └── ai-translate/        # AI drafting
 ├── components/                  # Grid, auth, UI primitives
 ├── lib/                         # Supabase clients, queries, theme, AI

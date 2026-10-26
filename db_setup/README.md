@@ -58,6 +58,7 @@ Apply only patches not already recorded for the target database, in this order:
 7. [`patches/tms_translation_history_trigger.sql`](./patches/tms_translation_history_trigger.sql) — protect audit-history creation for direct translation updates.
 8. [`patches/tms_least_privilege_data_api.sql`](./patches/tms_least_privilege_data_api.sql) — replace broad table privileges with the operations Glotter uses and make future exposure opt-in.
 9. [`patches/tms_owner_membership_visibility.sql`](./patches/tms_owner_membership_visibility.sql) — let project owners read membership rows they are authorized to manage.
+10. [`patches/tms_project_api_keys.sql`](./patches/tms_project_api_keys.sql) — add service-role-only project API keys used by the read-only export API.
 
 Each patch is intended to be applied once. Review its header and run it in the
 Supabase SQL Editor. For a production database, create and verify a manual

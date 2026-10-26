@@ -6,6 +6,7 @@ import packageJson from '@/package.json';
 import { getProjects, getProjectLanguages, getTranslationsGrid, createTranslationKey, createProject, addLanguage, deleteLanguage, deleteProject, updateLanguageName, bulkUpsertTranslations, deleteMissingTranslations, getProjectMembership, type ProjectMembership } from '@/lib/translations';
 import { TranslationRow } from '@/lib/supabase';
 import ManageProjectMembersDialog from '@/components/admin/ManageProjectMembersDialog';
+import ProjectApiKeysDialog from '@/components/admin/ProjectApiKeysDialog';
 import UserManagementDialog from '@/components/admin/UserManagementDialog';
 import ChangePasswordDialog from '@/components/admin/ChangePasswordDialog';
 import TranslationGrid from '@/components/TranslationGrid';
@@ -145,6 +146,7 @@ function Dashboard({ user }: { user: User }) {
   const [confirmProjectName, setConfirmProjectName] = useState('');
   const [deletingProject, setDeletingProject] = useState(false);
   const [isManageMembersOpen, setIsManageMembersOpen] = useState(false);
+  const [isApiKeysOpen, setIsApiKeysOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
@@ -639,6 +641,7 @@ function Dashboard({ user }: { user: User }) {
                       {canManageMembers && (
                         <>
                           <DropdownMenuItem onClick={() => setIsManageMembersOpen(true)}>Project access…</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setIsApiKeysOpen(true)}>API keys…</DropdownMenuItem>
                           {(canManageLanguages || canDeleteProject) && <DropdownMenuSeparator />}
                         </>
                       )}
@@ -1066,6 +1069,15 @@ function Dashboard({ user }: { user: User }) {
           projectName={selectedProjectInfo?.name}
           accessToken={session?.access_token ?? null}
           availableLanguages={sortedLanguages}
+        />
+      )}
+      {canManageMembers && (
+        <ProjectApiKeysDialog
+          open={isApiKeysOpen}
+          onOpenChange={setIsApiKeysOpen}
+          projectId={selectedProject || null}
+          projectName={selectedProjectInfo?.name}
+          accessToken={session?.access_token ?? null}
         />
       )}
       {isPlatformAdmin && (

@@ -100,6 +100,19 @@ CREATE TABLE project_activity_log (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Project API Keys (read-only export; stored as SHA-256 hashes)
+CREATE TABLE project_api_keys (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 100),
+  key_prefix TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_used_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ
+);
+
 --------------------------------------------------------------------------------
 -- 2) Constraints for Access Model
 --------------------------------------------------------------------------------
@@ -129,6 +142,7 @@ CREATE INDEX idx_project_members_project ON project_members(project_id);
 CREATE INDEX idx_translation_history_translation ON translation_history(translation_id);
 CREATE INDEX idx_project_activity_log_project ON project_activity_log(project_id);
 CREATE INDEX idx_project_invites_email ON project_invites(email);
+CREATE INDEX idx_project_api_keys_project ON project_api_keys(project_id);
 
 --------------------------------------------------------------------------------
 -- 4) Helper Functions
@@ -333,6 +347,8 @@ ALTER TABLE platform_admins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE translation_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_activity_log ENABLE ROW LEVEL SECURITY;
+-- No policies: API keys are reachable only through server-side service-role code.
+ALTER TABLE project_api_keys ENABLE ROW LEVEL SECURITY;
 
 -- Projects
 CREATE POLICY view_own_projects ON projects
@@ -460,7 +476,8 @@ REVOKE ALL PRIVILEGES ON TABLE
   public.platform_admins,
   public.translation_history,
   public.project_invites,
-  public.project_activity_log
+  public.project_activity_log,
+  public.project_api_keys
 FROM anon, authenticated, service_role;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
@@ -485,6 +502,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   public.project_invites,
   public.project_activity_log
 TO service_role;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.project_api_keys TO service_role;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   REVOKE ALL PRIVILEGES ON TABLES FROM anon, authenticated, service_role;

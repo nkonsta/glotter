@@ -32,6 +32,14 @@ language access.
 | `translation_history` | — | R | R | R | RCUD |
 | `project_invites` | — | — | RCUD | RCUD | RCUD |
 | `project_activity_log` | — | RC | RC | RC | RCUD |
+| `project_api_keys` | — | — | — | — | RCU |
+
+`project_api_keys` has RLS enabled with no policies, so it is reachable only
+through server routes that use the service role. Those routes let project
+owners and platform admins create, list, and revoke their project's keys, and
+store only SHA-256 hashes. A valid, unrevoked key grants read-only access to
+its own project's id and name, active languages, and translation export;
+revocation sets `revoked_at` rather than deleting the row.
 
 Owners cannot create new projects; project creation is a platform-admin
 operation. A platform admin does not need a `project_members` row. Preserved
