@@ -1,6 +1,6 @@
 {
   "name": "translation-mgmt",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
@@ -39,7 +39,7 @@
     "semver": "^7.8.5",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "next": {
